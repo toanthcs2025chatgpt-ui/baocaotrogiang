@@ -1,0 +1,6 @@
+{
+  "name": "CLB TOÁN THẦY THẮNG – HỆ THỐNG BÁO CÁO TRỢ GIẢNG",
+  "description": "Hệ thống quản lý báo cáo buổi học, theo dõi học sinh và phân tích học tập tích hợp AI dành cho CLB Toán Thầy Thắng.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
