@@ -17,6 +17,8 @@ import {
   Clock,
   FileText,
   Trash2,
+  FileDown,
+  Download,
 } from "lucide-react";
 import { User, Report, AppNotification } from "../types";
 import { storageService } from "../services/storage";
@@ -25,7 +27,7 @@ interface HeaderProps {
   currentUser: User;
   onUserChange: (user: User) => void;
   onToggleSidebar: () => void;
-  onResetDemo: () => void;
+  onResetDemo?: () => void;
   onOpenSettings: () => void;
   onOpenLogin: () => void;
   onOpenChangePassword: () => void;
@@ -37,7 +39,6 @@ export const Header: React.FC<HeaderProps> = ({
   currentUser,
   onUserChange,
   onToggleSidebar,
-  onResetDemo,
   onOpenSettings,
   onOpenLogin,
   onOpenChangePassword,
@@ -46,11 +47,22 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [notifDropdownOpen, setNotifDropdownOpen] = useState(false);
+  const [backupSuccessFilename, setBackupSuccessFilename] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>(() =>
     storageService.getUserNotifications(currentUser)
   );
 
   const isAdmin = currentUser.role === "admin";
+
+  const handleBackup = () => {
+    try {
+      const filename = storageService.downloadBackupJSON();
+      setBackupSuccessFilename(filename);
+      setTimeout(() => setBackupSuccessFilename(null), 4000);
+    } catch (e: any) {
+      alert("Lỗi xuất file sao lưu: " + (e?.message || "Không xác định"));
+    }
+  };
 
   // Refresh notifications whenever user changes or dropdown is opened
   useEffect(() => {
@@ -118,15 +130,18 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Right side: Notifications, Quick Action & Role Switcher */}
         <div className="flex items-center gap-2 sm:gap-2.5">
-          {/* Quick Demo Reset Button - Admin only */}
+          {/* Quick JSON Backup Button - Admin only */}
           {isAdmin && (
             <button
-              onClick={onResetDemo}
-              title="Nạp lại dữ liệu mẫu"
-              className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-blue-950/90 hover:bg-blue-900 active:bg-blue-950 text-blue-100 text-xs font-bold transition-all border border-blue-600/70 shadow-[0_3px_0_0_#1e3a8a] active:shadow-none active:translate-y-0.5 cursor-pointer"
+              type="button"
+              onClick={handleBackup}
+              title="Sao lưu toàn bộ dữ liệu cấu hình, học sinh, trợ giảng, lớp, báo cáo, nhận xét ra file JSON (baocaotrogiang.ngày.json)"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-950/90 hover:bg-blue-900 active:bg-blue-950 text-blue-100 text-xs font-bold transition-all border border-blue-600/70 shadow-[0_3px_0_0_#1e3a8a] active:shadow-none active:translate-y-0.5 cursor-pointer"
             >
-              <RefreshCw className="w-3.5 h-3.5 text-amber-400" />
-              <span className="text-[11px]">Nạp lại mẫu</span>
+              <FileDown className={`w-3.5 h-3.5 ${backupSuccessFilename ? "text-emerald-400 animate-bounce" : "text-amber-400"}`} />
+              <span className="text-[11px] font-black">
+                {backupSuccessFilename ? "Đã xuất JSON!" : "Sao lưu JSON"}
+              </span>
             </button>
           )}
 

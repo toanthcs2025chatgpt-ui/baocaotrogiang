@@ -12,6 +12,8 @@ import {
   Sparkles,
   X,
   Check,
+  LayoutGrid,
+  List,
 } from "lucide-react";
 import { Student, ClassItem, User as UserType } from "../types";
 import { storageService } from "../services/storage";
@@ -29,6 +31,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ currentUser }) => {
 
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedClassId, setSelectedClassId] = useState("all");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("list");
   const [activeProfileStudent, setActiveProfileStudent] = useState<Student | null>(null);
 
   // Modal create/edit
@@ -174,88 +177,238 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ currentUser }) => {
           </select>
         </div>
 
-        <div className="text-slate-500 font-medium">
-          Hiển thị <strong className="text-blue-900 font-black">{filtered.length}</strong> học sinh
+        <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+          <div className="text-slate-500 font-medium">
+            Hiển thị <strong className="text-blue-900 font-black">{filtered.length}</strong> học sinh
+          </div>
+
+          {/* View mode toggle */}
+          <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200">
+            <button
+              type="button"
+              onClick={() => setViewMode("list")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs transition-all cursor-pointer ${
+                viewMode === "list"
+                  ? "bg-white text-blue-900 shadow-xs border border-slate-200"
+                  : "text-slate-500 hover:text-slate-900"
+              }`}
+              title="Xem dạng bảng danh sách (List)"
+            >
+              <List className="w-4 h-4" />
+              <span>Danh sách</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("grid")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs transition-all cursor-pointer ${
+                viewMode === "grid"
+                  ? "bg-white text-blue-900 shadow-xs border border-slate-200"
+                  : "text-slate-500 hover:text-slate-900"
+              }`}
+              title="Xem dạng lưới thẻ (Grid)"
+            >
+              <LayoutGrid className="w-4 h-4" />
+              <span>Lưới thẻ</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Students Cards / Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filtered.map((student) => {
-          return (
-            <div
-              key={student.id}
-              className="bg-white rounded-3xl p-5 border-2 border-slate-200/80 hover:border-blue-400 hover:shadow-md transition-all flex flex-col justify-between space-y-4"
-            >
-              <div className="space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-700 to-indigo-900 text-amber-300 flex items-center justify-center font-black text-base shadow-sm border border-blue-600">
-                      {student.name.charAt(0)}
-                    </div>
-                    <div>
-                      <h3 className="font-black text-sm text-slate-900 leading-tight">
-                        {student.name}
-                      </h3>
-                      <span className="inline-block text-[11px] font-bold text-blue-900 bg-blue-100 px-2.5 py-0.5 rounded-lg border border-blue-200 mt-1">
+      {/* RENDER LIST VIEW OR GRID VIEW */}
+      {filtered.length === 0 ? (
+        <div className="bg-white rounded-3xl p-12 border-2 border-slate-200 text-center space-y-3">
+          <div className="w-14 h-14 mx-auto rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center">
+            <User className="w-7 h-7" />
+          </div>
+          <h4 className="font-black text-slate-800 text-sm">Không tìm thấy học sinh nào</h4>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            Thử thay đổi từ khóa tìm kiếm hoặc lọc theo lớp khác.
+          </p>
+        </div>
+      ) : viewMode === "list" ? (
+        /* LIST VIEW TABLE */
+        <div className="bg-white rounded-3xl border-2 border-slate-200/90 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50/90 border-b-2 border-slate-200 text-slate-700 uppercase font-black text-[11px] tracking-wider">
+                <tr>
+                  <th className="py-3.5 px-4 w-12 text-center">STT</th>
+                  <th className="py-3.5 px-4">Họ & Tên Học Sinh</th>
+                  <th className="py-3.5 px-4">Lớp Học</th>
+                  <th className="py-3.5 px-4">Phụ Huynh</th>
+                  <th className="py-3.5 px-4">Số Điện Thoại</th>
+                  <th className="py-3.5 px-4">Ghi Chú Đặc Điểm</th>
+                  <th className="py-3.5 px-4 text-center w-52">Thao Tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-medium">
+                {filtered.map((student, idx) => (
+                  <tr
+                    key={student.id}
+                    className="hover:bg-blue-50/40 transition-colors group"
+                  >
+                    <td className="py-3 px-4 text-center font-bold text-slate-400">
+                      {idx + 1}
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-700 to-indigo-900 text-amber-300 flex items-center justify-center font-black text-xs shadow-xs shrink-0">
+                          {student.name.charAt(0)}
+                        </div>
+                        <div>
+                          <span className="font-black text-slate-900 text-xs block group-hover:text-blue-900 transition-colors">
+                            {student.name}
+                          </span>
+                          {student.dob && (
+                            <span className="text-[10px] text-slate-400 font-medium">
+                              NS: {student.dob}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="inline-block text-[11px] font-bold text-blue-900 bg-blue-100 px-2.5 py-0.5 rounded-lg border border-blue-200">
                         {student.className || "Chưa xếp lớp"}
                       </span>
+                    </td>
+                    <td className="py-3 px-4 text-slate-800 font-bold">
+                      {student.parentName || <span className="text-slate-300 italic">—</span>}
+                    </td>
+                    <td className="py-3 px-4">
+                      {student.parentPhone ? (
+                        <span className="font-black text-blue-900 font-mono">
+                          {student.parentPhone}
+                        </span>
+                      ) : (
+                        <span className="text-slate-300 italic">—</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 max-w-xs">
+                      {student.note ? (
+                        <span className="text-[11px] text-slate-600 line-clamp-1">
+                          {student.note}
+                        </span>
+                      ) : (
+                        <span className="text-slate-300 italic text-[11px]">Chưa có ghi chú</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setActiveProfileStudent(student)}
+                          className="px-2.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-700 text-blue-900 hover:text-white border border-blue-200 text-[11px] font-black transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
+                          title="Xem hồ sơ & phân tích AI"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                          <span>Hồ sơ & AI</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEdit(student)}
+                          className="p-1.5 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-slate-500 hover:text-blue-800 transition-colors cursor-pointer"
+                          title="Chỉnh sửa thông tin"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                        </button>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(student.id)}
+                            className="p-1.5 rounded-xl border border-slate-200 hover:border-rose-400 hover:bg-rose-50 text-slate-500 hover:text-rose-600 transition-colors cursor-pointer"
+                            title="Xóa học sinh"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        /* GRID VIEW CARDS */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filtered.map((student) => {
+            return (
+              <div
+                key={student.id}
+                className="bg-white rounded-3xl p-5 border-2 border-slate-200/80 hover:border-blue-400 hover:shadow-md transition-all flex flex-col justify-between space-y-4"
+              >
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-700 to-indigo-900 text-amber-300 flex items-center justify-center font-black text-base shadow-sm border border-blue-600">
+                        {student.name.charAt(0)}
+                      </div>
+                      <div>
+                        <h3 className="font-black text-sm text-slate-900 leading-tight">
+                          {student.name}
+                        </h3>
+                        <span className="inline-block text-[11px] font-bold text-blue-900 bg-blue-100 px-2.5 py-0.5 rounded-lg border border-blue-200 mt-1">
+                          {student.className || "Chưa xếp lớp"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleOpenEdit(student)}
+                        className="p-2 rounded-xl border-2 border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-slate-500 hover:text-blue-800 transition-colors cursor-pointer"
+                        title="Sửa học sinh"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                      </button>
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleDelete(student.id)}
+                          className="p-2 rounded-xl border-2 border-slate-200 hover:border-rose-400 hover:bg-rose-50 text-slate-500 hover:text-rose-600 transition-colors cursor-pointer"
+                          title="Xóa học sinh"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => handleOpenEdit(student)}
-                      className="p-2 rounded-xl border-2 border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-slate-500 hover:text-blue-800 transition-colors cursor-pointer"
-                      title="Sửa học sinh"
-                    >
-                      <Edit className="w-3.5 h-3.5" />
-                    </button>
-                    {isAdmin && (
-                      <button
-                        onClick={() => handleDelete(student.id)}
-                        className="p-2 rounded-xl border-2 border-slate-200 hover:border-rose-400 hover:bg-rose-50 text-slate-500 hover:text-rose-600 transition-colors cursor-pointer"
-                        title="Xóa học sinh"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                  <div className="space-y-1.5 text-xs text-slate-600 pt-1 border-t border-slate-100 font-medium">
+                    {student.parentName && (
+                      <div className="flex items-center gap-2">
+                        <User className="w-3.5 h-3.5 text-slate-400" />
+                        <span>PH: <strong className="text-slate-800">{student.parentName}</strong></span>
+                      </div>
+                    )}
+                    {student.parentPhone && (
+                      <div className="flex items-center gap-2">
+                        <Phone className="w-3.5 h-3.5 text-slate-400" />
+                        <span className="font-black text-blue-900">{student.parentPhone}</span>
+                      </div>
+                    )}
+                    {student.note && (
+                      <div className="text-[11px] text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-200 line-clamp-2">
+                        {student.note}
+                      </div>
                     )}
                   </div>
                 </div>
 
-                <div className="space-y-1.5 text-xs text-slate-600 pt-1 border-t border-slate-100 font-medium">
-                  {student.parentName && (
-                    <div className="flex items-center gap-2">
-                      <User className="w-3.5 h-3.5 text-slate-400" />
-                      <span>PH: <strong className="text-slate-800">{student.parentName}</strong></span>
-                    </div>
-                  )}
-                  {student.parentPhone && (
-                    <div className="flex items-center gap-2">
-                      <Phone className="w-3.5 h-3.5 text-slate-400" />
-                      <span className="font-black text-blue-900">{student.parentPhone}</span>
-                    </div>
-                  )}
-                  {student.note && (
-                    <div className="text-[11px] text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-200 line-clamp-2">
-                      {student.note}
-                    </div>
-                  )}
-                </div>
+                {/* View Profile Action */}
+                <button
+                  onClick={() => setActiveProfileStudent(student)}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl bg-blue-50 hover:bg-blue-700 text-blue-900 hover:text-white border-2 border-blue-200 hover:border-blue-800 text-xs font-black transition-all cursor-pointer shadow-xs active:translate-y-0.5"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-500" />
+                  <span>Xem Hồ Sơ & AI Phân Tích</span>
+                </button>
               </div>
-
-              {/* View Profile Action */}
-              <button
-                onClick={() => setActiveProfileStudent(student)}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl bg-blue-50 hover:bg-blue-700 text-blue-900 hover:text-white border-2 border-blue-200 hover:border-blue-800 text-xs font-black transition-all cursor-pointer shadow-xs active:translate-y-0.5"
-              >
-                <Sparkles className="w-4 h-4 text-amber-500" />
-                <span>Xem Hồ Sơ & AI Phân Tích</span>
-              </button>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Modal Add / Edit Student */}
       {isModalOpen && (

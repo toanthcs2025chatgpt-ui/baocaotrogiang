@@ -9,6 +9,7 @@ import {
 export interface GenerateBulletinParams {
   period: "weekly" | "monthly" | "custom";
   timeframeLabel: string;
+  classId?: string;
   className?: string;
   reports: Report[];
   frequentAbsenceStudents: Array<{
@@ -231,6 +232,7 @@ export const aiService = {
             period: params.period,
             title: data.bulletin.title || `Bản Tin Học Vụ (${params.timeframeLabel})`,
             timeframeLabel: params.timeframeLabel,
+            classId: params.classId || (params.className === "Toàn bộ các lớp" ? "all" : undefined),
             className: params.className || "Toàn bộ các lớp",
             content: data.bulletin.content,
             summary: data.bulletin.summary || {
@@ -252,12 +254,17 @@ export const aiService = {
     }
 
     // Client fallback
-    const periodName = params.period === "monthly" ? "HÀNG THÁNG" : "HÀNG TUẦN";
+    const periodName = params.period === "monthly" ? "HÀNG THÁNG" : params.period === "custom" ? "TỔNG HỢP TOÀN KHÓA" : "HÀNG TUẦN";
+    const isSpecificClass = params.className && params.className !== "Toàn bộ các lớp";
+    const classSuffix = isSpecificClass ? ` - LỚP ${params.className.toUpperCase()}` : "";
+    const greetingTarget = isSpecificClass ? `lớp ${params.className}` : "toàn CLB";
+
     return {
       id: `bulletin_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       period: params.period,
-      title: `Bản Tin Học Vụ & Nề Nếp ${periodName} (${params.timeframeLabel})`,
+      title: `Bản Tin Học Vụ & Nề Nếp ${periodName}${classSuffix} (${params.timeframeLabel})`,
       timeframeLabel: params.timeframeLabel,
+      classId: params.classId || (params.className === "Toàn bộ các lớp" ? "all" : undefined),
       className: params.className || "Toàn bộ các lớp",
       createdAt: new Date().toISOString().replace("T", " ").slice(0, 16),
       generatedBy: "Hệ Thống Phân Tích Học Thuật",
@@ -269,12 +276,16 @@ export const aiService = {
         praiseHighlights: params.praiseStudents,
         commonMisconceptions: params.commonMisconceptions,
       },
-      content: `📢 **BẢN TIN HỌC VỤ & ĐỒNG HÀNH CHUYÊN MÔN ${periodName} • CLB TOÁN THẦY THẮNG**
+      content: `📢 **BẢN TIN HỌC VỤ & ĐỒNG HÀNH CHUYÊN MÔN ${periodName}${classSuffix} • CLB TOÁN THẦY THẮNG**
 *(Tổng hợp từ các báo cáo ca dạy đã duyệt – ${params.timeframeLabel})*
+
+Kính gửi Quý Phụ huynh và các con học sinh ${greetingTarget},
+
+CLB TOÁN THẦY THẮNG xin gửi đến Quý Phụ huynh và các con BẢN TIN HỌC VỤ ${params.timeframeLabel.toLowerCase()}, tổng hợp chi tiết tình hình học tập, nề nếp và các điểm cần lưu ý.
 
 ---
 🌟 **1. TỔNG QUAN HỌC TẬP:**
-Trong ${params.timeframeLabel.toLowerCase()}, CLB đã hoàn thành tốt đẹp các ca dạy theo đúng tiến độ phân phối chương trình. Các con học sinh cơ bản nắm vững các phương pháp giải toán trọng tâm.
+Trong ${params.timeframeLabel.toLowerCase()}, ${isSpecificClass ? `lớp ${params.className}` : "các lớp của CLB"} đã hoàn thành tốt đẹp các ca dạy theo đúng tiến độ phân phối chương trình (${params.reports.length} ca dạy đã được Thầy Thắng duyệt). Các con học sinh cơ bản nắm vững các phương pháp giải toán trọng tâm.
 
 ---
 🏆 **2. TUYÊN DƯƠNG HỌC SINH TIÊU BIỂU & TIẾN BỘ NỔI BẬT:**
@@ -288,7 +299,7 @@ ${
 ⚠️ **3. CẢNH BÁO HỌC VỤ & NHẮC NHỞ QUAN TRỌNG:**
 *(Kính đề nghị Quý Phụ huynh phối hợp cùng Thầy cô sát sao nhắc nhở các con)*
 
-📌 **Học sinh nghỉ 2–3 buổi trong tháng (Cần bổ trợ bài gấp):**
+📌 **Học sinh vắng / nghỉ buổi học (Cần bổ trợ bài gấp):**
 ${
   params.frequentAbsenceStudents.length > 0
     ? params.frequentAbsenceStudents

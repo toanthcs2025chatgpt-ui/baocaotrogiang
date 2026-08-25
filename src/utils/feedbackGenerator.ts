@@ -17,6 +17,7 @@ export interface GenerateFeedbackOptions {
   misconceptionNotes?: string;
   misconceptionStudents?: string[];
   misconceptionTags?: string[];
+  misconceptionStudentMap?: Record<string, string[]>;
 }
 
 /**
@@ -38,10 +39,11 @@ function formatCriterionWithStudents(
 function formatMisconceptionsBlock(options: GenerateFeedbackOptions): string[] {
   const lines: string[] = [];
   const tags = options.misconceptionTags || [];
-  const students = options.misconceptionStudents || [];
+  const studentMap = options.misconceptionStudentMap || {};
+  const generalStudents = options.misconceptionStudents || [];
   const note = options.misconceptionNotes?.trim();
 
-  if (tags.length === 0 && students.length === 0 && !note) {
+  if (tags.length === 0 && generalStudents.length === 0 && !note) {
     return lines;
   }
 
@@ -49,13 +51,25 @@ function formatMisconceptionsBlock(options: GenerateFeedbackOptions): string[] {
   lines.push(`🔍 LƯU Ý LỖI SAI & KIẾN THỨC CẦN CỦNG CỐ:`);
   
   if (tags.length > 0) {
-    lines.push(`• Lỗi sai thường gặp: ${tags.join("; ")}`);
+    tags.forEach((tag) => {
+      const specificStudents = studentMap[tag] || [];
+      if (specificStudents.length > 0) {
+        lines.push(`• ${tag} (Lưu ý: ${specificStudents.join(", ")})`);
+      } else {
+        lines.push(`• ${tag}`);
+      }
+    });
   }
-  if (students.length > 0) {
-    lines.push(`• Học sinh cần chú ý rèn thêm: ${students.join(", ")}`);
+
+  // If there are general students not covered in per-tag map
+  const allMappedStudents = new Set(Object.values(studentMap).flat());
+  const unmappedGeneralStudents = generalStudents.filter((s) => !allMappedStudents.has(s));
+  if (unmappedGeneralStudents.length > 0) {
+    lines.push(`• Học sinh cần kèm thêm: ${unmappedGeneralStudents.join(", ")}`);
   }
+
   if (note) {
-    lines.push(`• Ghi chú hướng dẫn: ${note}`);
+    lines.push(`• Hướng dẫn khắc phục: ${note}`);
   }
 
   return lines;

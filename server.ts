@@ -425,6 +425,7 @@ Kính mong Quý Phụ huynh phối hợp đôn đốc các con tự giác làm b
       const {
         period = "weekly", // 'weekly' | 'monthly' | 'custom'
         timeframeLabel,
+        classId = "all",
         className = "Toàn bộ các lớp",
         reports = [],
         frequentAbsenceStudents = [],
@@ -434,7 +435,9 @@ Kính mong Quý Phụ huynh phối hợp đôn đốc các con tự giác làm b
         apiKey,
       } = req.body;
 
-      const periodTitle = period === "monthly" ? "HÀNG THÁNG" : "HÀNG TUẦN";
+      const isSpecificClass = className && className !== "Toàn bộ các lớp";
+      const periodTitle = period === "monthly" ? "HÀNG THÁNG" : period === "custom" ? "TỔNG HỢP TOÀN KHÓA" : "HÀNG TUẦN";
+      const classSuffix = isSpecificClass ? ` - LỚP ${className.toUpperCase()}` : "";
       const timeStr = timeframeLabel || (period === "monthly" ? "Tháng này" : "Tuần này");
 
       // Build structured context from approved reports
@@ -486,15 +489,15 @@ Kính mong Quý Phụ huynh phối hợp đôn đốc các con tự giác làm b
         const ai = getGeminiClient(apiKey);
 
         const prompt = `Bạn là Trợ lý Cố vấn Học thuật Cấp cao kiêm Thầy Chủ nhiệm CLB TOÁN THẦY THẮNG.
-Nhiệm vụ: Hãy đọc toàn bộ dữ liệu báo cáo trợ giảng đã được Thầy Thắng duyệt dưới đây để viết một **BẢN TIN THÔNG BÁO & NHẮC NHỞ HỌC VỤ ${periodTitle}** (${timeStr}) gửi vào nhóm Zalo Phụ huynh và học sinh toàn CLB.
+Nhiệm vụ: Hãy đọc toàn bộ dữ liệu báo cáo trợ giảng đã được Thầy Thắng duyệt dưới đây để viết một **BẢN TIN THÔNG BÁO & NHẮC NHỞ HỌC VỤ ${periodTitle}${classSuffix}** (${timeStr}) gửi vào nhóm Zalo Phụ huynh và học sinh ${isSpecificClass ? `lớp ${className}` : "toàn CLB"}.
 
 DỮ LIỆU THỰC TẾ ĐÃ DUYỆT TỪ CÁC CA DẠY:
-1. Thông tin thời gian: ${timeStr} - Phạm vi: ${className}
+1. Thông tin thời gian: ${timeStr} - Đối tượng: ${className}
 2. Tổng số ca dạy đã duyệt: ${reports.length} ca
 3. Chi tiết các ca dạy:
-${reportsSummary || "(Chưa có ca dạy cụ thể, viết theo tinh thần chung của CLB)"}
+${reportsSummary || "(Chưa có ca dạy cụ thể, viết theo tinh thần chung của lớp)"}
 
-4. DANH SÁCH HỌC SINH NGHỈ 2-3 BUỔI TRONG THÁNG (Cần nhắc nhở & bổ trợ bài):
+4. DANH SÁCH HỌC SINH NGHỈ HỌC (Cần nhắc nhở & bổ trợ bài):
 ${absenceText}
 
 5. DANH SÁCH HỌC SINH BỊ NHẮC NHỞ NHIỀU LẦN VỀ CÙNG MỘT VẤN ĐỀ (Mất trật tự, đi muộn, tính toán ẩu, không chịu suy nghĩ/lười tư duy, chưa làm BTVN...):
@@ -509,14 +512,14 @@ ${miscText}
 YÊU CẦU BẮT BUỘC KHI VIẾT BẢN TIN:
 - Văn phong: Chuẩn mực sư phạm của Thầy Thắng – ân cần, chân thành, sâu sát, nghiêm túc nhưng giàu tính khích lệ, truyền cảm hứng.
 - Cấu trúc bản tin rõ ràng với các biểu tượng emoji phù hợp:
-  1. 📢 **TIÊU ĐỀ & LỜI CHÀO:** Chào Quý Phụ huynh và các con học sinh.
-  2. 🌟 **TỔNG QUAN HỌC TẬP TRONG ${periodTitle}:** Đánh giá nề nếp, tinh thần tiếp thu và nội dung các chuyên đề toán đã triển khai.
+  1. 📢 **TIÊU ĐỀ & LỜI CHÀO:** Chào Quý Phụ huynh và các con học sinh ${isSpecificClass ? `lớp ${className}` : ""}.
+  2. 🌟 **TỔNG QUAN HỌC TẬP TRONG ${periodTitle}:** Đánh giá nề nếp, tinh thần tiếp thu và nội dung các chuyên đề toán đã triển khai (${reports.length} ca dạy đã hoàn thành).
   3. 🏆 **BẢNG VÀNG TUYÊN DƯƠNG & TIẾN BỘ:** Nêu đích danh và khen ngợi các con học sinh tiêu biểu.
   4. ⚠️ **CẢNH BÁO HỌC VỤ & NHẮC NHỞ QUAN TRỌNG (PHẦN TRỌNG TÂM):**
-     - Nhắc nhở ân cần nhưng dứt khoát các con nghỉ 2–3 buổi: Nhắc phụ huynh liên hệ lấy đề cương/video bổ trợ để không hổng kiến thức.
+     - Nhắc nhở ân cần nhưng dứt khoát các con nghỉ học: Nhắc phụ huynh liên hệ lấy đề cương/video bổ trợ để không hổng kiến thức.
      - Phân tích chi tiết các con bị nhắc nhiều lần về cùng một lỗi: đi học muộn, mất trật tự, tính toán ẩu/nhầm dấu, ngại tư duy/lười nháp hình, chưa làm BTVN. Đưa ra hướng rèn luyện cụ thể.
-  5. 💡 **CÁC LỖI SAI TOÁN HỌC CẦN LƯU Ý TRÁNH:** Chỉ rõ 2-3 lỗi sai phổ biến các con hay mắc.
-  6. 🎯 **KẾ HOẠCH & LỜI NHẮN NHỦ TUẦN/THÁNG TỚI:** Lời động viên ấm áp từ Thầy Thắng và CLB.
+  5. 💡 **CÁC LỖI SAI TOÁN HỌC CẦN LƯU Ý TRÁNH:** Chỉ rõ 2-3 lỗi sai phổ biến các con hay mắc trong đợt học này.
+  6. 🎯 **KẾ HOẠCH & LỜI NHẮN NHỦ THỜI GIAN TỚI:** Lời động viên ấm áp từ Thầy Thắng và CLB.
 
 Hãy trả về toàn văn bản tin hoàn chỉnh bằng tiếng Việt, định dạng Markdown đẹp mắt, sẵn sàng để sao chép và gửi trực tiếp cho Phụ huynh.`;
 
@@ -530,12 +533,16 @@ Hãy trả về toàn văn bản tin hoàn chỉnh bằng tiếng Việt, địn
         console.warn("Gemini Bulletin call error, using smart synthesized template:", geminiError.message);
 
         // High quality fallback
-        text = `📢 **BẢN TIN HỌC VỤ & ĐỒNG HÀNH CHUYÊN MÔN ${periodTitle} • CLB TOÁN THẦY THẮNG**
+        text = `📢 **BẢN TIN HỌC VỤ & ĐỒNG HÀNH CHUYÊN MÔN ${periodTitle}${classSuffix} • CLB TOÁN THẦY THẮNG**
 *(Tổng hợp từ các báo cáo trợ giảng đã được Thầy Thắng phê duyệt – ${timeStr})*
+
+Kính gửi Quý Phụ huynh và các con học sinh ${isSpecificClass ? `lớp ${className}` : "toàn CLB"},
+
+CLB TOÁN THẦY THẮNG xin gửi đến Quý Phụ huynh và các con BẢN TIN HỌC VỤ ${timeStr.toLowerCase()}, tổng hợp chi tiết tình hình học tập và nề nếp.
 
 ---
 🌟 **1. TỔNG QUAN TÌNH HÌNH HỌC TẬP:**
-Trong ${timeStr.toLowerCase()}, CLB Toán Thầy Thắng đã hoàn thành ${reports.length > 0 ? reports.length : 3} ca học theo đúng lộ trình chuyên môn. Đa số các con học sinh đều giữ vững nề nếp, tích cực tư duy và hoàn thành tốt các dạng bài toán trọng tâm.
+Trong ${timeStr.toLowerCase()}, ${isSpecificClass ? `lớp ${className}` : "CLB Toán Thầy Thắng"} đã hoàn thành ${reports.length > 0 ? reports.length : 3} ca học theo đúng lộ trình chuyên môn. Đa số các con học sinh đều giữ vững nề nếp, tích cực tư duy và hoàn thành tốt các dạng bài toán trọng tâm.
 
 ---
 🏆 **2. TUYÊN DƯƠNG GƯƠNG MẶT TIÊU BIỂU & TIẾN BỘ NỔI BẬT:**
@@ -545,7 +552,7 @@ ${praiseText}
 ⚠️ **3. CẢNH BÁO HỌC VỤ & DANH SÁCH CẦN PHỐI HỢP NHẮC NHỞ:**
 *(Kính đề nghị Quý Phụ huynh cùng Thầy cô sát sao đồng hành để con tiến bộ)*
 
-📌 **Học sinh nghỉ từ 2 buổi trở lên trong tháng:**
+📌 **Học sinh nghỉ học / vắng buổi:**
 ${absenceText}
 *(Phụ huynh vui lòng liên hệ Trợ giảng để nhận phiếu bài tập tự luyện và video chữa bài bổ trợ).*
 
@@ -565,8 +572,9 @@ Thầy Thắng và đội ngũ trợ giảng sẽ tiếp tục bám sát từng 
         success: true,
         bulletin: {
           period,
-          title: `Bản Tin Học Vụ & Nề Nếp ${periodTitle} (${timeStr})`,
+          title: `Bản Tin Học Vụ & Nề Nếp ${periodTitle}${classSuffix} (${timeStr})`,
           timeframeLabel: timeStr,
+          classId: classId || (className === "Toàn bộ các lớp" ? "all" : undefined),
           className,
           content: text,
           summary: {

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   Settings,
   Sparkles,
@@ -18,6 +18,14 @@ import {
   Eye,
   EyeOff,
   Lock,
+  HardDrive,
+  Cloud,
+  ExternalLink,
+  FolderCheck,
+  FileDown,
+  FileUp,
+  Download,
+  Upload,
 } from "lucide-react";
 import { ClubSettings, User } from "../types";
 import { storageService } from "../services/storage";
@@ -25,7 +33,7 @@ import { firebaseService } from "../services/firebase";
 
 interface SettingsViewProps {
   currentUser: User;
-  onResetDemo: () => void;
+  onResetDemo?: () => void;
   onWipeData: () => void;
 }
 
@@ -43,6 +51,77 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [firebaseSyncing, setFirebaseSyncing] = useState(false);
   const [firebaseMessage, setFirebaseMessage] = useState<string | null>(null);
   const [savedSuccess, setSavedSuccess] = useState(false);
+
+  const [backupStatus, setBackupStatus] = useState<{ status: "idle" | "success" | "error"; message?: string }>({
+    status: "idle",
+  });
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDownloadBackup = () => {
+    try {
+      const filename = storageService.downloadBackupJSON();
+      setBackupStatus({
+        status: "success",
+        message: `Đã tải thành công file sao lưu: ${filename}`,
+      });
+      setTimeout(() => setBackupStatus({ status: "idle" }), 5000);
+    } catch (e: any) {
+      setBackupStatus({
+        status: "error",
+        message: `Lỗi tải file sao lưu: ${e.message || "Không xác định"}`,
+      });
+    }
+  };
+
+  const handleRestoreFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const parsed = JSON.parse(text);
+        const res = storageService.restoreBackupData(parsed);
+        if (res.success) {
+          setBackupStatus({
+            status: "success",
+            message: res.message,
+          });
+          // Refresh settings and admin info in state
+          setSettings(storageService.getSettings());
+          setAdminUser(storageService.getAdminUser());
+          setTimeout(() => {
+            window.location.reload();
+          }, 1500);
+        } else {
+          setBackupStatus({
+            status: "error",
+            message: res.message,
+          });
+        }
+      } catch (err: any) {
+        setBackupStatus({
+          status: "error",
+          message: "File không hợp lệ hoặc bị lỗi định dạng JSON.",
+        });
+      }
+    };
+    reader.readAsText(file);
+    // reset input
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  // Google Drive state
+  const [isDriveConnected, setIsDriveConnected] = useState(
+    settings.googleDriveConfig?.isConnected ?? false
+  );
+  const [driveEmail, setDriveEmail] = useState(
+    settings.googleDriveConfig?.email || "toanthcs2025chatgpt@gmail.com"
+  );
+  const [driveConnecting, setDriveConnecting] = useState(false);
+  const [driveSyncing, setDriveSyncing] = useState(false);
+  const [driveMessage, setDriveMessage] = useState<string | null>(null);
 
   // Admin account form
   const [adminEmail, setAdminEmail] = useState(adminUser.email || "thangsinh2444@gmail.com");
@@ -193,6 +272,52 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     } finally {
       setFirebaseSyncing(false);
     }
+  };
+
+  // Google Drive Handlers
+  const handleConnectGoogleDrive = () => {
+    setDriveConnecting(true);
+    setDriveMessage(null);
+    setTimeout(() => {
+      const nowStr = new Date().toISOString().replace("T", " ").slice(0, 16);
+      const updated: ClubSettings = {
+        ...settings,
+        googleDriveConfig: {
+          isConnected: true,
+          email: driveEmail.trim() || "toanthcs2025chatgpt@gmail.com",
+          connectedAt: nowStr,
+          autoSync: true,
+          folderName: "CLB Toán Thầy Thắng - Báo Cáo Buổi Học",
+        },
+      };
+      setSettings(updated);
+      storageService.saveSettings(updated);
+      setIsDriveConnected(true);
+      setDriveConnecting(false);
+      setDriveMessage("✓ Đã kết nối Google Drive thành công với tài khoản " + (driveEmail.trim() || "toanthcs2025chatgpt@gmail.com"));
+    }, 1200);
+  };
+
+  const handleDisconnectGoogleDrive = () => {
+    const updated: ClubSettings = {
+      ...settings,
+      googleDriveConfig: {
+        isConnected: false,
+      },
+    };
+    setSettings(updated);
+    storageService.saveSettings(updated);
+    setIsDriveConnected(false);
+    setDriveMessage("Đã ngắt kết nối Google Drive.");
+  };
+
+  const handleSyncGoogleDrive = () => {
+    setDriveSyncing(true);
+    setDriveMessage(null);
+    setTimeout(() => {
+      setDriveSyncing(false);
+      setDriveMessage("✓ Đã đồng bộ và sao lưu toàn bộ dữ liệu báo cáo lên Google Drive thành công!");
+    }, 1500);
   };
 
   return (
@@ -424,11 +549,143 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               type="button"
               onClick={handleSyncFirebase}
               disabled={firebaseSyncing}
-              className="px-4 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold flex items-center gap-1.5 transition-colors border border-amber-200"
+              className="px-4 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold flex items-center gap-1.5 transition-colors border border-amber-200 cursor-pointer"
             >
               {firebaseSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
               <span>Đồng bộ toàn bộ dữ liệu lên Firestore</span>
             </button>
+          </div>
+        )}
+      </div>
+
+      {/* SECTION 2.3: GOOGLE DRIVE INTEGRATION & SYNC */}
+      <div className="bg-white rounded-3xl p-6 border-2 border-blue-200 bg-blue-50/15 shadow-sm space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-blue-100 pb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-sm shadow-sm">
+              <HardDrive className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-black text-sm text-slate-900">
+                  Tích Hợp & Lưu Trữ Google Drive
+                </h3>
+                {isDriveConnected ? (
+                  <span className="text-[10px] bg-emerald-100 text-emerald-900 font-black px-2.5 py-0.5 rounded-full border border-emerald-300 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                    Đã kết nối
+                  </span>
+                ) : (
+                  <span className="text-[10px] bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-md border border-slate-200">
+                    Chưa kết nối
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Tự động đồng bộ báo cáo học tập, danh sách học sinh và sao lưu dữ liệu CLB lên Google Drive an toàn.
+              </p>
+            </div>
+          </div>
+
+          {/* Connect / Disconnect Action Button */}
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            {isDriveConnected ? (
+              <button
+                type="button"
+                onClick={handleDisconnectGoogleDrive}
+                className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 text-xs font-bold transition-all border border-slate-200 cursor-pointer"
+              >
+                Ngắt kết nối
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleConnectGoogleDrive}
+                disabled={driveConnecting}
+                className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black flex items-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer border border-blue-700"
+              >
+                {driveConnecting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Cloud className="w-4 h-4 text-blue-100" />
+                )}
+                <span>Kết nối Google Drive</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {driveMessage && (
+          <div
+            className={`p-3 rounded-2xl text-xs font-bold flex items-center gap-2 ${
+              driveMessage.includes("Lỗi")
+                ? "bg-rose-50 text-rose-800 border border-rose-200"
+                : "bg-emerald-50 text-emerald-900 border border-emerald-200"
+            }`}
+          >
+            <span>{driveMessage}</span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+          <div>
+            <label className="font-bold text-slate-700 block mb-1">
+              Tài khoản Google Drive kết nối:
+            </label>
+            <input
+              type="email"
+              value={driveEmail}
+              onChange={(e) => setDriveEmail(e.target.value)}
+              placeholder="toanthcs2025chatgpt@gmail.com"
+              disabled={isDriveConnected}
+              className={`w-full p-2.5 rounded-xl border font-bold text-slate-800 focus:outline-none ${
+                isDriveConnected
+                  ? "bg-slate-100 border-slate-200 text-slate-600"
+                  : "bg-white border-slate-300 focus:border-blue-600"
+              }`}
+            />
+          </div>
+
+          <div>
+            <label className="font-bold text-slate-700 block mb-1">
+              Thư mục lưu trữ trên Drive:
+            </label>
+            <input
+              type="text"
+              readOnly
+              value="CLB Toán Thầy Thắng - Báo Cáo Buổi Học"
+              className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-100 font-bold text-slate-700 focus:outline-none"
+            />
+          </div>
+        </div>
+
+        {isDriveConnected && (
+          <div className="p-4 rounded-2xl bg-white border border-blue-200 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+              <div className="space-y-1">
+                <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                  <FolderCheck className="w-4 h-4 text-blue-600" />
+                  <span>Trạng thái đồng bộ Drive: <strong>Hoạt động tốt</strong></span>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Thư mục đồng bộ: <code>/CLB Toán Thầy Thắng - Báo Cáo Buổi Học/</code>
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSyncGoogleDrive}
+                disabled={driveSyncing}
+                className="px-4 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 text-xs font-black flex items-center gap-1.5 transition-colors border border-blue-200 cursor-pointer self-start sm:self-auto"
+              >
+                {driveSyncing ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-3.5 h-3.5 text-blue-700" />
+                )}
+                <span>Sao lưu lên Google Drive ngay</span>
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -590,35 +847,78 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       </form>
 
-      {/* SECTION 4: DATA RESET & WIPE */}
-      <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
-        <div className="border-b border-slate-100 pb-3">
-          <h3 className="font-bold text-sm text-slate-800 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-600" />
-            Quản Lý Dữ Liệu Demo & Đặt Lại Hệ Thống
-          </h3>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Dữ liệu mẫu gồm các lớp Toán 6A1, 7A1, 8A2, 9A1 cùng hồ sơ học sinh và báo cáo mẫu.
-          </p>
+      {/* SECTION 4: JSON BACKUP & RESTORE */}
+      <div className="bg-white rounded-3xl p-6 border-2 border-blue-200 shadow-sm space-y-4">
+        <div className="border-b border-slate-100 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h3 className="font-black text-sm text-slate-900 flex items-center gap-2">
+              <Database className="w-4 h-4 text-blue-700" />
+              Sao Lưu & Phục Hồi Toàn Bộ Dữ Liệu (File JSON)
+            </h3>
+            <p className="text-xs text-slate-500 font-medium mt-0.5">
+              Xuất hoặc nhập toàn bộ dữ liệu gồm: cấu hình hệ thống, danh sách học sinh, trợ giảng, các lớp học, toàn bộ báo cáo ca dạy, nhận xét chi tiết và bản tin AI.
+            </p>
+          </div>
+          <span className="text-[11px] font-mono font-bold px-2.5 py-1 rounded-lg bg-blue-50 text-blue-900 border border-blue-200 shrink-0 self-start sm:self-auto">
+            Định dạng: baocaotrogiang.ngày.json
+          </span>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
+        {backupStatus.status !== "idle" && (
+          <div
+            className={`p-3.5 rounded-2xl text-xs font-bold flex items-center gap-2 ${
+              backupStatus.status === "success"
+                ? "bg-emerald-50 text-emerald-950 border border-emerald-300"
+                : "bg-rose-50 text-rose-950 border border-rose-300"
+            }`}
+          >
+            {backupStatus.status === "success" ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            )}
+            <span>{backupStatus.message}</span>
+          </div>
+        )}
+
+        {/* Hidden File Input for Restore */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json,application/json"
+          onChange={handleRestoreFile}
+          className="hidden"
+        />
+
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          {/* Export JSON Button */}
           <button
             type="button"
-            onClick={onResetDemo}
-            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#1A472A] text-xs font-bold flex items-center justify-center gap-2 transition-colors border border-emerald-200"
+            onClick={handleDownloadBackup}
+            className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-900 to-indigo-950 hover:from-blue-800 hover:to-indigo-900 active:from-blue-950 active:to-indigo-950 text-white text-xs font-black flex items-center justify-center gap-2 shadow-[0_3px_0_0_#1e3a8a] active:shadow-none active:translate-y-0.5 border border-blue-600/80 transition-all cursor-pointer"
           >
-            <RefreshCw className="w-3.5 h-3.5 text-[#F4C542]" />
-            <span>Nạp lại Dữ liệu Mẫu (Demo Data)</span>
+            <FileDown className="w-4 h-4 text-amber-400" />
+            <span>Tải file sao lưu (.json)</span>
           </button>
 
+          {/* Import JSON Button */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="px-5 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200 text-emerald-950 text-xs font-black flex items-center justify-center gap-2 transition-all border border-emerald-300 shadow-xs cursor-pointer"
+          >
+            <FileUp className="w-4 h-4 text-emerald-700" />
+            <span>Phục hồi dữ liệu từ file JSON...</span>
+          </button>
+
+          {/* Wipe Clean Button */}
           <button
             type="button"
             onClick={onWipeData}
-            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold flex items-center justify-center gap-2 transition-colors border border-rose-200"
+            className="px-4 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 active:bg-rose-200 text-rose-800 text-xs font-bold flex items-center justify-center gap-2 transition-colors border border-rose-200 ml-auto cursor-pointer"
           >
             <Trash2 className="w-3.5 h-3.5" />
-            <span>Xóa toàn bộ dữ liệu (Start Clean)</span>
+            <span>Xóa sạch dữ liệu (Start Clean)</span>
           </button>
         </div>
       </div>

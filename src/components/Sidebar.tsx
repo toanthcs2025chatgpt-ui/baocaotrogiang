@@ -56,7 +56,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     badge?: string | number;
     adminOnly?: boolean;
   }> = [
-    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, adminOnly: true },
+    { id: "dashboard", label: "Bảng tin tổng hợp", icon: LayoutDashboard, adminOnly: true },
     { id: "create_report", label: "Báo cáo buổi học", icon: FilePlus2 },
     {
       id: "reports_history",

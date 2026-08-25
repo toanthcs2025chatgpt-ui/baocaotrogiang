@@ -122,8 +122,10 @@ export interface Report {
   
   // Ghi chú riêng về kiến thức các em còn lầm lẫn, sai sót (Mục mới theo yêu cầu)
   misconceptionNotes?: string;
-  misconceptionStudents?: string[]; // Danh sách tên HS mắc lỗi
+  misconceptionStudents?: string[]; // Danh sách tên HS mắc lỗi chung
   misconceptionTags?: string[]; // Các lỗi sai toán học phổ biến được chọn
+  misconceptionStudentMap?: Record<string, string[]>; // Error tag -> list of student names
+  customMisconceptionTags?: string[]; // Custom errors added by user
 
   // Attendance & Quick roll call
   attendanceStats?: {
@@ -224,4 +226,11 @@ export interface ClubSettings {
     appId: string;
   };
   useFirebase: boolean;
+  googleDriveConfig?: {
+    isConnected: boolean;
+    email?: string;
+    connectedAt?: string;
+    autoSync?: boolean;
+    folderName?: string;
+  };
 }

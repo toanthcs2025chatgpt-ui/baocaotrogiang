@@ -20,6 +20,9 @@ import {
   ShieldCheck,
   LogIn,
   Send,
+  LayoutGrid,
+  List,
+  Search,
 } from "lucide-react";
 import { Assistant, ClassItem, User } from "../types";
 import { storageService } from "../services/storage";
@@ -38,6 +41,8 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
   const classes = storageService.getClasses();
   const reports = storageService.getReports();
 
+  const [searchTerm, setSearchTerm] = useState("");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("list");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAssistant, setEditingAssistant] = useState<Assistant | null>(null);
 
@@ -60,33 +65,32 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
     setAssistants(storageService.getAssistants());
   };
 
-  // Helper to generate username from name
+  // Helper to generate username from name (lấy luôn tên bỏ dấu của trợ giảng viết liền không dấu)
   const generateUsernameFromName = (fullName: string) => {
     if (!fullName) return "";
-    const clean = fullName
+    return fullName
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
       .replace(/[đĐ]/g, "d")
+      .replace(/[^a-zA-Z0-9]/g, "")
       .toLowerCase()
       .trim();
-    const parts = clean.split(/\s+/).filter(Boolean);
-    if (parts.length === 1) return parts[0] + ".ta";
-    const lastName = parts[parts.length - 1];
-    const firstInitials = parts.slice(0, -1).map((p) => p[0]).join("");
-    return `${lastName}.${firstInitials}` || `${parts[0]}.ta`;
   };
+
+  const [isUsernameCustomized, setIsUsernameCustomized] = useState(false);
 
   const handleOpenAdd = () => {
     setEditingAssistant(null);
     setName("");
     setUsername("");
-    setPassword("123");
+    setPassword("123456");
     setShowPassword(false);
     setEmail("");
     setPhone("");
     setSelectedClasses([]);
     setNotes("");
     setFormError("");
+    setIsUsernameCustomized(false);
     setIsModalOpen(true);
   };
 
@@ -94,13 +98,14 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
     setEditingAssistant(asst);
     setName(asst.name);
     setUsername(asst.username || generateUsernameFromName(asst.name));
-    setPassword(asst.password || "123");
+    setPassword(asst.password || "123456");
     setShowPassword(false);
     setEmail(asst.email || "");
     setPhone(asst.phone || "");
     setSelectedClasses(asst.classes || []);
     setNotes(asst.notes || "");
     setFormError("");
+    setIsUsernameCustomized(true);
     setIsModalOpen(true);
   };
 
@@ -108,6 +113,26 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
     setSelectedClasses((prev) =>
       prev.includes(classId) ? prev.filter((id) => id !== classId) : [...prev, classId]
     );
+  };
+
+  const handleNameChange = (val: string) => {
+    setName(val);
+    if (!editingAssistant && !isUsernameCustomized) {
+      const autoUser = generateUsernameFromName(val);
+      setUsername(autoUser);
+    }
+  };
+
+  const handleUsernameChange = (val: string) => {
+    const clean = val.toLowerCase().replace(/[^a-z0-9_.-]/g, "");
+    setUsername(clean);
+    setIsUsernameCustomized(true);
+  };
+
+  const handleResetUsernameToAuto = () => {
+    const autoUser = generateUsernameFromName(name);
+    setUsername(autoUser);
+    setIsUsernameCustomized(false);
   };
 
   const handleSave = (e: React.FormEvent) => {
@@ -120,7 +145,7 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
     }
 
     const cleanUsername = (username.trim() || generateUsernameFromName(name)).toLowerCase();
-    const cleanPassword = password.trim() || "123";
+    const cleanPassword = password.trim() || "123456";
 
     // Check duplicate username if adding or changing username
     const existing = assistants.find(
@@ -162,14 +187,18 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
       .map((c) => c.name)
       .join(", ") || "Chưa xếp lớp";
 
+    const finalUsername = asst.username || generateUsernameFromName(asst.name) || asst.id;
+    const finalPassword = asst.password || "123456";
+
     const text = `📋 THÔNG TIN TÀI KHOẢN TRỢ GIẢNG - CLB TOÁN THẦY THẮNG
 ------------------------------------------------
 👤 Họ và tên: ${asst.name}
-🔑 Tên đăng nhập: ${asst.username || asst.id}
-🔒 Mật khẩu: ${asst.password || "123"}
+🔑 Tên đăng nhập: ${finalUsername}
+🔒 Mật khẩu mặc định: ${finalPassword}
 🏫 Lớp phụ trách: ${assignedClassNames}
 🌐 Quyền hạn: Báo cáo buổi học & Xem lịch sử báo cáo của mình
-------------------------------------------------`;
+------------------------------------------------
+📌 Lưu ý: Trợ giảng đăng nhập tại hệ thống Báo cáo Học vụ CLB và đổi mật khẩu sau lần đầu đăng nhập.`;
 
     navigator.clipboard.writeText(text);
     setCopiedId(`full_${asst.id}`);
@@ -237,8 +266,265 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
         )}
       </div>
 
-      {/* Grid of Assistants */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      {/* Filter & View Mode Bar */}
+      <div className="bg-white rounded-3xl p-4 border-2 border-slate-200/80 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+        <div className="relative flex-1 max-w-md w-full">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+          <input
+            type="text"
+            placeholder="Tìm theo họ tên, tên đăng nhập, số điện thoại trợ giảng..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-3 py-2.5 rounded-xl border-2 border-slate-200 bg-slate-50 font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-blue-600 text-xs transition-colors"
+          />
+        </div>
+
+        <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+          <div className="text-slate-500 font-medium">
+            Hiển thị <strong className="text-blue-900 font-black">
+              {assistants.filter((a) => {
+                if (!searchTerm.trim()) return true;
+                const q = searchTerm.toLowerCase();
+                return (
+                  a.name.toLowerCase().includes(q) ||
+                  a.username?.toLowerCase().includes(q) ||
+                  a.phone?.toLowerCase().includes(q) ||
+                  a.email?.toLowerCase().includes(q)
+                );
+              }).length}
+            </strong> trợ giảng
+          </div>
+
+          {/* View mode toggle */}
+          <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200">
+            <button
+              type="button"
+              onClick={() => setViewMode("list")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs transition-all cursor-pointer ${
+                viewMode === "list"
+                  ? "bg-white text-blue-900 shadow-xs border border-slate-200"
+                  : "text-slate-500 hover:text-slate-900"
+              }`}
+              title="Xem dạng danh sách (List)"
+            >
+              <List className="w-4 h-4" />
+              <span>Danh sách</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("grid")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs transition-all cursor-pointer ${
+                viewMode === "grid"
+                  ? "bg-white text-blue-900 shadow-xs border border-slate-200"
+                  : "text-slate-500 hover:text-slate-900"
+              }`}
+              title="Xem dạng lưới thẻ (Grid)"
+            >
+              <LayoutGrid className="w-4 h-4" />
+              <span>Lưới thẻ</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* RENDER LIST VIEW OR GRID VIEW */}
+      {assistants.filter((a) => {
+        if (!searchTerm.trim()) return true;
+        const q = searchTerm.toLowerCase();
+        return (
+          a.name.toLowerCase().includes(q) ||
+          a.username?.toLowerCase().includes(q) ||
+          a.phone?.toLowerCase().includes(q) ||
+          a.email?.toLowerCase().includes(q)
+        );
+      }).length === 0 ? (
+        <div className="bg-white rounded-3xl p-12 border-2 border-slate-200 text-center space-y-3">
+          <div className="w-14 h-14 mx-auto rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center">
+            <GraduationCap className="w-7 h-7" />
+          </div>
+          <h4 className="font-black text-slate-800 text-sm">Không tìm thấy trợ giảng nào</h4>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            Thử thay đổi từ khóa tìm kiếm.
+          </p>
+        </div>
+      ) : viewMode === "list" ? (
+        /* LIST VIEW TABLE */
+        <div className="bg-white rounded-3xl border-2 border-slate-200/90 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50/90 border-b-2 border-slate-200 text-slate-700 uppercase font-black text-[11px] tracking-wider">
+                <tr>
+                  <th className="py-3.5 px-4 w-12 text-center">STT</th>
+                  <th className="py-3.5 px-4">Trợ Giảng</th>
+                  <th className="py-3.5 px-4">Tài Khoản Đăng Nhập</th>
+                  <th className="py-3.5 px-4">Mật Khẩu</th>
+                  <th className="py-3.5 px-4">Liên Hệ</th>
+                  <th className="py-3.5 px-4">Lớp Phụ Trách</th>
+                  <th className="py-3.5 px-4 text-center">Số Ca Báo Cáo</th>
+                  <th className="py-3.5 px-4 text-center w-52">Thao Tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-medium">
+                {assistants
+                  .filter((a) => {
+                    if (!searchTerm.trim()) return true;
+                    const q = searchTerm.toLowerCase();
+                    return (
+                      a.name.toLowerCase().includes(q) ||
+                      a.username?.toLowerCase().includes(q) ||
+                      a.phone?.toLowerCase().includes(q) ||
+                      a.email?.toLowerCase().includes(q)
+                    );
+                  })
+                  .map((asst, idx) => {
+                    const asstReports = reports.filter(
+                      (r) => r.assistantId === asst.id || r.assistantName === asst.name
+                    );
+                    const assignedClassesList = classes.filter((c) => asst.classes?.includes(c.id));
+                    const isPasswordVisible = visiblePasswordMap[asst.id];
+
+                    return (
+                      <tr
+                        key={asst.id}
+                        className="hover:bg-blue-50/40 transition-colors group"
+                      >
+                        <td className="py-3 px-4 text-center font-bold text-slate-400">
+                          {idx + 1}
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-900 to-indigo-950 text-amber-400 flex items-center justify-center font-black text-xs shadow-xs shrink-0">
+                              {asst.name.charAt(0)}
+                            </div>
+                            <div>
+                              <span className="font-black text-slate-900 text-xs block group-hover:text-blue-900 transition-colors">
+                                {asst.name}
+                              </span>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                                  {asst.active ? "Đang hoạt động" : "Tạm nghỉ"}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono font-bold text-blue-950 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-200">
+                              {asst.username || asst.id}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200">
+                              {isPasswordVisible ? (asst.password || "123456") : "••••••"}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => togglePasswordVisibility(asst.id)}
+                              className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                              title={isPasswordVisible ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                            >
+                              {isPasswordVisible ? (
+                                <EyeOff className="w-3.5 h-3.5" />
+                              ) : (
+                                <Eye className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="space-y-0.5 text-[11px]">
+                            {asst.phone && (
+                              <div className="font-bold text-blue-900">{asst.phone}</div>
+                            )}
+                            {asst.email && (
+                              <div className="text-slate-500 truncate max-w-[150px]">{asst.email}</div>
+                            )}
+                            {!asst.phone && !asst.email && (
+                              <span className="text-slate-300 italic">—</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 max-w-xs">
+                          <div className="flex flex-wrap gap-1">
+                            {assignedClassesList.length > 0 ? (
+                              assignedClassesList.map((c) => (
+                                <span
+                                  key={c.id}
+                                  className="text-[10px] font-extrabold bg-blue-50 text-blue-900 px-2 py-0.5 rounded-md border border-blue-200"
+                                >
+                                  {c.name.split("–")[0]}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-slate-300 italic text-[11px]">Chưa xếp lớp</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <span className="inline-block font-black text-amber-950 bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-200 text-[11px]">
+                            {asstReports.length} ca
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => handleTestLogin(asst)}
+                                className="px-2 py-1 rounded-xl bg-blue-50 hover:bg-blue-700 text-blue-900 hover:text-white border border-blue-200 text-[11px] font-black transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
+                                title={`Đăng nhập thử vai trò ${asst.name}`}
+                              >
+                                <LogIn className="w-3.5 h-3.5" />
+                                <span>Đăng nhập thử</span>
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleCopyAccountInfo(asst)}
+                              className="p-1.5 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-slate-500 hover:text-blue-800 transition-colors cursor-pointer"
+                              title="Sao chép thông tin tài khoản"
+                            >
+                              {copiedId === `full_${asst.id}` ? (
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                              ) : (
+                                <Copy className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                            {isAdmin && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEdit(asst)}
+                                  className="p-1.5 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-slate-500 hover:text-blue-800 transition-colors cursor-pointer"
+                                  title="Chỉnh sửa thông tin"
+                                >
+                                  <Edit className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDelete(asst.id)}
+                                  className="p-1.5 rounded-xl border border-slate-200 hover:border-rose-400 hover:bg-rose-50 text-slate-500 hover:text-rose-600 transition-colors cursor-pointer"
+                                  title="Xóa trợ giảng"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        /* Grid of Assistants */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {assistants.map((asst) => {
           const asstReports = reports.filter(
             (r) => r.assistantId === asst.id || r.assistantName === asst.name
@@ -343,7 +629,7 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
                         </button>
                       </div>
                       <span className="font-mono font-black text-amber-950 truncate">
-                        {isPasswordVisible ? asst.password || "123" : "••••••"}
+                        {isPasswordVisible ? asst.password || "123456" : "••••••"}
                       </span>
                     </div>
                   </div>
@@ -417,6 +703,7 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
           );
         })}
       </div>
+      )}
 
       {/* Modal Add / Edit Assistant with Username and Password */}
       {isModalOpen && (
@@ -460,15 +747,13 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
                   type="text"
                   required
                   value={name}
-                  onChange={(e) => {
-                    setName(e.target.value);
-                    if (!editingAssistant && !username) {
-                      setUsername(generateUsernameFromName(e.target.value));
-                    }
-                  }}
+                  onChange={(e) => handleNameChange(e.target.value)}
                   placeholder="VD: Nguyễn Minh Hùng"
                   className="w-full p-2.5 rounded-xl border-2 border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:border-blue-600 font-bold text-slate-900"
                 />
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  💡 Gõ họ tên đầy đủ, hệ thống sẽ tự động tạo tên đăng nhập bỏ dấu viết liền bên dưới.
+                </span>
               </div>
 
               {/* Tên đăng nhập & Mật khẩu */}
@@ -478,56 +763,76 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
                     <KeyRound className="w-4 h-4 text-blue-800" />
                     CẤP TÀI KHOẢN ĐĂNG NHẬP
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => setUsername(generateUsernameFromName(name))}
-                    className="text-[11px] font-bold text-blue-700 hover:text-blue-900 underline cursor-pointer"
-                  >
-                    Tự tạo username
-                  </button>
+                  {name.trim() && isUsernameCustomized && (
+                    <button
+                      type="button"
+                      onClick={handleResetUsernameToAuto}
+                      className="text-[11px] font-bold text-blue-700 hover:text-blue-900 underline flex items-center gap-1 cursor-pointer"
+                      title="Khôi phục tên đăng nhập tự động theo họ tên"
+                    >
+                      <Sparkles className="w-3 h-3 text-amber-500" />
+                      <span>Khôi phục username tự động</span>
+                    </button>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {/* Username */}
                   <div>
-                    <label className="font-bold text-slate-700 block mb-1">
-                      Tên đăng nhập: <span className="text-rose-500">*</span>
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="font-bold text-slate-700">
+                        Tên đăng nhập: <span className="text-rose-500">*</span>
+                      </label>
+                      {!isUsernameCustomized && username && (
+                        <span className="text-[9px] font-black text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded border border-emerald-200">
+                          Tự động sinh
+                        </span>
+                      )}
+                    </div>
                     <input
                       type="text"
                       required
                       value={username}
-                      onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/\s+/g, ""))}
-                      placeholder="VD: hung.ta"
+                      onChange={(e) => handleUsernameChange(e.target.value)}
+                      placeholder="VD: nguyenminhhung"
                       className="w-full p-2.5 rounded-xl border-2 border-slate-300 bg-white focus:outline-none focus:border-blue-600 font-mono font-black text-blue-950"
                     />
-                    <span className="text-[10px] text-slate-500 mt-0.5 block">Dùng khi đăng nhập hệ thống</span>
+                    <span className="text-[10px] text-slate-500 mt-0.5 block">
+                      Viết liền không dấu (VD: <code>nguyenminhhung</code>)
+                    </span>
                   </div>
 
                   {/* Password */}
                   <div>
-                    <label className="font-bold text-slate-700 block mb-1">
-                      Mật khẩu: <span className="text-rose-500">*</span>
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="font-bold text-slate-700">
+                        Mật khẩu: <span className="text-rose-500">*</span>
+                      </label>
+                      <span className="text-[9px] font-black text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded border border-amber-200">
+                        Mặc định: 123456
+                      </span>
+                    </div>
                     <div className="relative">
                       <input
                         type={showPassword ? "text" : "password"}
                         required
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        placeholder="VD: 123"
+                        placeholder="VD: 123456"
                         className="w-full p-2.5 pr-9 rounded-xl border-2 border-slate-300 bg-white focus:outline-none focus:border-blue-600 font-mono font-black text-amber-950"
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
                         title={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
                       >
                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
-                    <span className="text-[10px] text-slate-500 mt-0.5 block">Mặc định ban đầu: 123</span>
+                    <span className="text-[10px] text-slate-500 mt-0.5 block">
+                      Thiết lập ban đầu <code>123456</code>
+                    </span>
                   </div>
                 </div>
               </div>

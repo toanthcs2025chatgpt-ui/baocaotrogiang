@@ -17,6 +17,8 @@ import {
   Share2,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   FileText,
   MessageCircle,
   TrendingUp,
@@ -25,6 +27,7 @@ import {
   Trash2,
   BookX,
   FileWarning,
+  GraduationCap,
 } from "lucide-react";
 import Markdown from "react-markdown";
 import { Report, User, AIBulletin } from "../types";
@@ -47,8 +50,14 @@ export const AIBulletinSection: React.FC<AIBulletinSectionProps> = ({
   const reports = storageService.getReports();
 
   // Filter states
-  const [period, setPeriod] = useState<"weekly" | "monthly" | "all">("weekly");
+  const [period, setPeriod] = useState<"weekly" | "monthly" | "month_select" | "all">("weekly");
+  const [selectedMonth, setSelectedMonth] = useState<{ year: number; month: number }>(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() + 1 };
+  });
+  const [monthMenuOpen, setMonthMenuOpen] = useState(false);
   const [selectedClassId, setSelectedClassId] = useState<string>("all");
+  const [classMenuOpen, setClassMenuOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedSection, setCopiedSection] = useState<string | null>(null);
@@ -71,31 +80,12 @@ export const AIBulletinSection: React.FC<AIBulletinSectionProps> = ({
     return saved.length > 0 ? saved[0] : null;
   });
 
-  // Filter approved reports in current scope
-  const approvedReports = useMemo(() => {
-    const now = new Date();
-    return reports.filter((r) => {
-      if (r.status !== "approved") return false;
-      if (selectedClassId !== "all" && r.classId !== selectedClassId) return false;
-
-      if (period === "all") return true;
-
-      const repDate = new Date(r.date);
-      if (isNaN(repDate.getTime())) return true;
-
-      const diffDays = Math.floor(
-        (now.getTime() - repDate.getTime()) / (1000 * 60 * 60 * 24)
-      );
-
-      if (period === "weekly") {
-        return diffDays >= 0 && diffDays <= 7;
-      }
-      if (period === "monthly") {
-        return diffDays >= 0 && diffDays <= 31;
-      }
-      return true;
-    });
-  }, [reports, period, selectedClassId]);
+  // Selected class display name
+  const selectedClassName = useMemo(() => {
+    if (selectedClassId === "all") return "Toàn bộ các lớp";
+    const found = classes.find((c) => c.id === selectedClassId);
+    return found ? found.name : "Toàn bộ các lớp";
+  }, [classes, selectedClassId]);
 
   // Derive timeframe label
   const timeframeLabel = useMemo(() => {
@@ -108,14 +98,171 @@ export const AIBulletinSection: React.FC<AIBulletinSectionProps> = ({
     if (period === "monthly") {
       return `Tháng ${now.getMonth() + 1}/${now.getFullYear()}`;
     }
-    return "Tất cả các ca dạy đã duyệt";
-  }, [period]);
+    if (period === "month_select") {
+      return `Tháng ${selectedMonth.month}/${selectedMonth.year}`;
+    }
+    return "Toàn bộ thời gian (Tất cả ca dạy)";
+  }, [period, selectedMonth]);
 
-  const selectedClassName = useMemo(() => {
-    if (selectedClassId === "all") return "Toàn bộ các lớp";
-    const found = classes.find((c) => c.id === selectedClassId);
-    return found ? found.name : "Toàn bộ các lớp";
-  }, [classes, selectedClassId]);
+  // Map of reports count by month for active class filter
+  const reportMonthsMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    reports.forEach((r) => {
+      if (r.status !== "approved") return;
+      if (selectedClassId !== "all" && r.classId !== selectedClassId) return;
+      const repDate = new Date(r.date);
+      if (!isNaN(repDate.getTime())) {
+        const key = `${repDate.getFullYear()}-${repDate.getMonth() + 1}`;
+        map[key] = (map[key] || 0) + 1;
+      }
+    });
+    return map;
+  }, [reports, selectedClassId]);
+
+  // Filter approved reports in current scope
+  const approvedReports = useMemo(() => {
+    const now = new Date();
+    return reports.filter((r) => {
+      if (r.status !== "approved") return false;
+      if (selectedClassId !== "all" && r.classId !== selectedClassId) return false;
+
+      if (period === "all") return true;
+
+      const repDate = new Date(r.date);
+      if (isNaN(repDate.getTime())) return true;
+
+      if (period === "weekly") {
+        const diffDays = Math.floor(
+          (now.getTime() - repDate.getTime()) / (1000 * 60 * 60 * 24)
+        );
+        return diffDays >= 0 && diffDays <= 7;
+      }
+      if (period === "monthly") {
+        return (
+          repDate.getFullYear() === now.getFullYear() &&
+          repDate.getMonth() + 1 === now.getMonth() + 1
+        );
+      }
+      if (period === "month_select") {
+        return (
+          repDate.getFullYear() === selectedMonth.year &&
+          repDate.getMonth() + 1 === selectedMonth.month
+        );
+      }
+      return true;
+    });
+  }, [reports, period, selectedClassId, selectedMonth]);
+
+  // Count approved reports per class for badges
+  const classReportCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: 0 };
+    const now = new Date();
+
+    reports.forEach((r) => {
+      if (r.status !== "approved") return;
+      if (period !== "all") {
+        const repDate = new Date(r.date);
+        if (!isNaN(repDate.getTime())) {
+          if (period === "weekly") {
+            const diffDays = Math.floor(
+              (now.getTime() - repDate.getTime()) / (1000 * 60 * 60 * 24)
+            );
+            if (diffDays < 0 || diffDays > 7) return;
+          } else if (period === "monthly") {
+            if (
+              repDate.getFullYear() !== now.getFullYear() ||
+              repDate.getMonth() + 1 !== now.getMonth() + 1
+            ) {
+              return;
+            }
+          } else if (period === "month_select") {
+            if (
+              repDate.getFullYear() !== selectedMonth.year ||
+              repDate.getMonth() + 1 !== selectedMonth.month
+            ) {
+              return;
+            }
+          }
+        }
+      }
+      counts["all"] = (counts["all"] || 0) + 1;
+      if (r.classId) {
+        counts[r.classId] = (counts[r.classId] || 0) + 1;
+      }
+    });
+
+    return counts;
+  }, [reports, period, selectedMonth]);
+
+  // Auto-sync active bulletin when selected class or period changes
+  const currentMatchingBulletin = useMemo(() => {
+    const targetPeriod = period === "all" ? "custom" : (period === "weekly" ? "weekly" : "monthly");
+    return (
+      bulletins.find((b) => {
+        const classMatch =
+          selectedClassId === "all"
+            ? !b.classId || b.classId === "all" || b.className === "Toàn bộ các lớp"
+            : b.classId === selectedClassId || b.className?.includes(selectedClassName);
+        const periodMatch =
+          period === "all"
+            ? b.period === "custom" || (b.period as string) === "all"
+            : (period === "month_select"
+                ? b.timeframeLabel.includes(`Tháng ${selectedMonth.month}/${selectedMonth.year}`) || b.period === "monthly"
+                : b.period === targetPeriod);
+        return classMatch && periodMatch;
+      }) || null
+    );
+  }, [bulletins, selectedClassId, period, selectedClassName, selectedMonth]);
+
+  // Month navigation helpers
+  const handlePrevMonth = () => {
+    setSelectedMonth((prev) => {
+      if (prev.month === 1) {
+        return { year: prev.year - 1, month: 12 };
+      }
+      return { year: prev.year, month: prev.month - 1 };
+    });
+    setPeriod("month_select");
+  };
+
+  const handleNextMonth = () => {
+    setSelectedMonth((prev) => {
+      if (prev.month === 12) {
+        return { year: prev.year + 1, month: 1 };
+      }
+      return { year: prev.year, month: prev.month + 1 };
+    });
+    setPeriod("month_select");
+  };
+
+  const handleSelectSpecificMonth = (m: number, y?: number) => {
+    setSelectedMonth((prev) => ({
+      year: y ?? prev.year,
+      month: m,
+    }));
+    setPeriod("month_select");
+    setMonthMenuOpen(false);
+  };
+
+  // When class or period changes, update active bulletin to match if available
+  React.useEffect(() => {
+    if (currentMatchingBulletin) {
+      setActiveBulletin(currentMatchingBulletin);
+    } else if (bulletins.length > 0) {
+      // Fall back to matching class if any, or null
+      const classOnlyMatch = bulletins.find((b) =>
+        selectedClassId === "all"
+          ? !b.classId || b.classId === "all"
+          : b.classId === selectedClassId
+      );
+      setActiveBulletin(classOnlyMatch || null);
+    }
+  }, [selectedClassId, period, currentMatchingBulletin]);
+
+  // Target reports for analysis extractions
+  const targetScopeReports = useMemo(() => {
+    return approvedReports;
+  }, [approvedReports]);
 
   // EXTRACT 1: Frequent Absences (Nghỉ 2-3 buổi trong tháng)
   const frequentAbsences = useMemo(() => {
@@ -481,10 +628,11 @@ export const AIBulletinSection: React.FC<AIBulletinSectionProps> = ({
 
     try {
       const generated = await aiService.generateAIBulletin({
-        period: period === "all" ? "custom" : period,
+        period: period === "weekly" ? "weekly" : (period === "all" ? "custom" : "monthly"),
         timeframeLabel,
+        classId: selectedClassId,
         className: selectedClassName,
-        reports: approvedReports.length > 0 ? approvedReports : reports.filter((r) => r.status === "approved"),
+        reports: approvedReports.length > 0 ? approvedReports : reports.filter((r) => r.status === "approved" && (selectedClassId === "all" || r.classId === selectedClassId)),
         frequentAbsenceStudents: frequentAbsences,
         repeatedIssueStudents: repeatedIssues,
         praiseStudents: praiseList,
@@ -536,9 +684,11 @@ export const AIBulletinSection: React.FC<AIBulletinSectionProps> = ({
   return (
     <div className="space-y-6">
       {/* SECTION HEADER WITH ACTION BAR */}
-      <div className="bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 text-white rounded-3xl p-6 sm:p-7 shadow-xl border border-blue-800/80 relative overflow-hidden">
-        {/* Glow background accent */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
+      <div className="bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 text-white rounded-3xl p-6 sm:p-7 shadow-xl border border-blue-800/80 relative z-20">
+        {/* Glow background accent clipped safely inside container */}
+        <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none">
+          <div className="absolute top-0 right-0 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
+        </div>
 
         <div className="relative z-10 space-y-4">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -592,61 +742,351 @@ export const AIBulletinSection: React.FC<AIBulletinSectionProps> = ({
             </div>
           </div>
 
-          {/* Filter Bar Controls */}
-          <div className="pt-3 border-t border-blue-800/60 flex flex-wrap items-center justify-between gap-3">
-            {/* Period tabs */}
-            <div className="flex items-center bg-blue-950/90 p-1 rounded-2xl border border-blue-700/60">
+          {/* Filter Bar Controls: Bottom row with Period Tabs on Left & Pinned Class Selector on Far Right */}
+          <div className="pt-3.5 border-t border-blue-800/60 flex flex-wrap items-center justify-between gap-3">
+            {/* Period tabs (Tuần / Tháng này / Chọn Tháng / Tất cả) on the left */}
+            <div className="flex items-center bg-blue-950/90 p-1 rounded-2xl border border-blue-700/60 shrink-0">
               <button
-                onClick={() => setPeriod("weekly")}
+                type="button"
+                onClick={() => {
+                  setPeriod("weekly");
+                  setMonthMenuOpen(false);
+                }}
                 className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
                   period === "weekly"
                     ? "bg-amber-400 text-slate-950 shadow-md"
                     : "text-blue-200 hover:text-white"
                 }`}
               >
-                📅 Bản tin Tuần này
+                📅 Tổng kết Tuần này
               </button>
               <button
-                onClick={() => setPeriod("monthly")}
+                type="button"
+                onClick={() => {
+                  setPeriod("monthly");
+                  setMonthMenuOpen(false);
+                }}
                 className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
                   period === "monthly"
                     ? "bg-amber-400 text-slate-950 shadow-md"
                     : "text-blue-200 hover:text-white"
                 }`}
               >
-                🗓️ Bản tin Tháng này
+                🗓️ Tổng kết Tháng này
               </button>
+
+              {/* DEDICATED MONTH SELECTOR BUTTON (Chọn Tháng) */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setMonthMenuOpen(!monthMenuOpen)}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+                    period === "month_select"
+                      ? "bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 shadow-md ring-2 ring-amber-300"
+                      : "text-blue-200 hover:text-white hover:bg-blue-900/60"
+                  }`}
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>
+                    {period === "month_select"
+                      ? `Tháng ${selectedMonth.month}/${selectedMonth.year}`
+                      : "Chọn Tháng"}
+                  </span>
+                  <ChevronDown
+                    className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                      monthMenuOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+
+                {/* MONTH SELECTION POPOVER */}
+                {monthMenuOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setMonthMenuOpen(false)}
+                    />
+                    <div className="absolute left-0 top-full mt-2 w-72 sm:w-80 bg-slate-900 border-2 border-blue-500 rounded-2xl shadow-2xl p-3 z-50 space-y-3 animate-in fade-in zoom-in-95 duration-150 ring-4 ring-black/30 text-white">
+                      {/* Year navigator header */}
+                      <div className="flex items-center justify-between px-1 pb-2 border-b border-blue-800/80">
+                        <span className="text-xs font-black text-blue-200">
+                          Chọn mốc tháng
+                        </span>
+                        <div className="flex items-center gap-1.5 bg-blue-950 px-2 py-1 rounded-xl border border-blue-700">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSelectedMonth((prev) => ({ ...prev, year: prev.year - 1 }))
+                            }
+                            className="p-1 rounded hover:bg-blue-800 text-blue-300 hover:text-white cursor-pointer"
+                            title="Năm trước"
+                          >
+                            <ChevronLeft className="w-3.5 h-3.5" />
+                          </button>
+                          <span className="text-xs font-black text-amber-400 px-1">
+                            Năm {selectedMonth.year}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSelectedMonth((prev) => ({ ...prev, year: prev.year + 1 }))
+                            }
+                            className="p-1 rounded hover:bg-blue-800 text-blue-300 hover:text-white cursor-pointer"
+                            title="Năm sau"
+                          >
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Quick Prev / Next Month Navigator */}
+                      <div className="flex items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={handlePrevMonth}
+                          className="flex-1 px-2.5 py-1.5 rounded-xl bg-blue-950 hover:bg-blue-900 text-blue-200 hover:text-white text-[11px] font-bold border border-blue-700/80 flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Tháng trước</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleNextMonth}
+                          className="flex-1 px-2.5 py-1.5 rounded-xl bg-blue-950 hover:bg-blue-900 text-blue-200 hover:text-white text-[11px] font-bold border border-blue-700/80 flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <span>Tháng sau</span>
+                          <ChevronRight className="w-3.5 h-3.5 text-amber-400" />
+                        </button>
+                      </div>
+
+                      {/* 12-Month Grid */}
+                      <div className="grid grid-cols-3 gap-1.5 pt-1">
+                        {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => {
+                          const key = `${selectedMonth.year}-${m}`;
+                          const repCount = reportMonthsMap[key] || 0;
+                          const isSelected =
+                            period === "month_select" &&
+                            selectedMonth.month === m;
+                          const isCurrent =
+                            new Date().getFullYear() === selectedMonth.year &&
+                            new Date().getMonth() + 1 === m;
+
+                          return (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => handleSelectSpecificMonth(m)}
+                              className={`p-2 rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-0.5 cursor-pointer relative ${
+                                isSelected
+                                  ? "bg-amber-400 text-slate-950 font-black shadow-md ring-2 ring-amber-300"
+                                  : isCurrent
+                                  ? "bg-blue-800 text-white border border-cyan-400/80"
+                                  : "bg-blue-950/80 hover:bg-blue-800 text-blue-100 border border-blue-800/80"
+                              }`}
+                            >
+                              <span>Tháng {m}</span>
+                              {repCount > 0 ? (
+                                <span
+                                  className={`text-[9px] px-1.5 py-0.2 rounded-full font-black ${
+                                    isSelected
+                                      ? "bg-slate-950 text-amber-400"
+                                      : "bg-emerald-950 text-emerald-300 border border-emerald-700/80"
+                                  }`}
+                                >
+                                  {repCount} ca
+                                </span>
+                              ) : (
+                                <span className="text-[9px] opacity-40">0 ca</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
               <button
-                onClick={() => setPeriod("all")}
+                type="button"
+                onClick={() => {
+                  setPeriod("all");
+                  setMonthMenuOpen(false);
+                }}
                 className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
                   period === "all"
                     ? "bg-amber-400 text-slate-950 shadow-md"
                     : "text-blue-200 hover:text-white"
                 }`}
               >
-                ⚡ Toàn bộ ca dạy
+                ⚡ Tất cả các ca dạy
               </button>
             </div>
 
-            {/* Class filter dropdown */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-blue-200 font-bold hidden sm:inline-flex items-center gap-1">
-                <Filter className="w-3.5 h-3.5 text-amber-400" />
-                <span>Lớp học:</span>
-              </span>
-              <select
-                value={selectedClassId}
-                onChange={(e) => setSelectedClassId(e.target.value)}
-                className="bg-blue-950 text-white text-xs font-bold px-3 py-1.5 rounded-xl border border-blue-700/80 focus:outline-none focus:ring-2 focus:ring-cyan-400 cursor-pointer"
+            {/* CLASS SELECTOR PILL BUTTON PINNED TO THE BOTTOM RIGHT */}
+            <div className="relative z-30 ml-auto shrink-0">
+              <button
+                type="button"
+                onClick={() => setClassMenuOpen(!classMenuOpen)}
+                className="px-4 py-1.5 rounded-full bg-blue-950/90 hover:bg-blue-900 active:bg-blue-950 text-white text-xs font-bold transition-all cursor-pointer flex items-center gap-2 border border-blue-500/80 shadow-[0_2px_8px_rgba(0,0,0,0.3)] hover:border-blue-400"
               >
-                <option value="all">🌟 Tất cả các lớp ({classes.length} lớp)</option>
-                {classes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.grade})
-                  </option>
-                ))}
-              </select>
+                <Filter className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span className="text-blue-100 font-bold">Lớp:</span>
+                <span className="text-amber-300 font-black max-w-[160px] sm:max-w-[240px] truncate">
+                  {selectedClassName}
+                </span>
+                <span className="text-[11px] px-2 py-0.5 rounded-full font-black bg-blue-900/90 text-cyan-300 border border-blue-700/80">
+                  {selectedClassId === "all"
+                    ? classReportCounts["all"] || 0
+                    : classReportCounts[selectedClassId] || 0}{" "}
+                  ca
+                </span>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 text-blue-300 transition-transform duration-200 ${
+                    classMenuOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+
+              {/* Dropdown Menu */}
+              {classMenuOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setClassMenuOpen(false)}
+                  />
+                  <div className="absolute right-0 top-full mt-2 w-72 sm:w-80 bg-slate-900 border-2 border-blue-500 rounded-2xl shadow-2xl p-2 z-50 space-y-1 animate-in fade-in zoom-in-95 duration-150 ring-4 ring-black/30">
+                    <div className="px-3 py-1.5 text-[11px] font-black text-blue-300 uppercase tracking-wider border-b border-blue-800/80 flex items-center justify-between">
+                      <span>Chọn phạm vi lớp học</span>
+                      <span className="text-[10px] text-amber-400 font-bold">
+                        {classes.length} lớp
+                      </span>
+                    </div>
+
+                    {/* Option: All Classes */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedClassId("all");
+                        setClassMenuOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
+                        selectedClassId === "all"
+                          ? "bg-amber-400 text-slate-950 font-black shadow-sm"
+                          : "text-white hover:bg-blue-800/70"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span>🌟 Tất cả các lớp</span>
+                      </div>
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+                          selectedClassId === "all"
+                            ? "bg-slate-950 text-amber-400"
+                            : "bg-blue-950 text-blue-200 border border-blue-700"
+                        }`}
+                      >
+                        {classReportCounts["all"] || 0} ca
+                      </span>
+                    </button>
+
+                    {/* Option: Individual Classes */}
+                    <div className="max-h-60 overflow-y-auto space-y-1 pt-1 border-t border-blue-800/40 scrollbar-thin">
+                      {classes.map((c) => {
+                        const count = classReportCounts[c.id] || 0;
+                        const isSelected = selectedClassId === c.id;
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedClassId(c.id);
+                              setClassMenuOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
+                              isSelected
+                                ? "bg-amber-400 text-slate-950 font-black shadow-sm"
+                                : "text-white hover:bg-blue-800/70"
+                            }`}
+                          >
+                            <div className="truncate pr-2">
+                              <div className="font-bold">{c.name}</div>
+                              <div
+                                className={`text-[10px] ${
+                                  isSelected ? "text-slate-800" : "text-blue-300"
+                                }`}
+                              >
+                                {c.grade}{" "}
+                                {c.schedule ? `• ${c.schedule}` : ""}
+                              </div>
+                            </div>
+                            <span
+                              className={`text-[10px] px-2 py-0.5 rounded-full font-black shrink-0 ${
+                                isSelected
+                                  ? "bg-slate-950 text-amber-400"
+                                  : "bg-blue-950 text-blue-200 border border-blue-700"
+                              }`}
+                            >
+                              {count} ca
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* CLASS-SPECIFIC SUMMARY KPI BANNER */}
+      <div className="bg-white rounded-3xl p-4 sm:p-5 border-2 border-blue-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-3 rounded-2xl bg-blue-950 text-amber-400 font-black shadow-xs shrink-0">
+            <GraduationCap className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-base sm:text-lg font-black text-slate-900">
+                Tổng Kết Học Vụ: {selectedClassName}
+              </h3>
+              <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-900 border border-blue-200">
+                {timeframeLabel}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 font-medium mt-0.5">
+              Dữ liệu được cập nhật tự động từ các báo cáo trợ giảng đã được Thầy Thắng phê duyệt.
+            </p>
+          </div>
+        </div>
+
+        {/* 5 Quick KPI Badges */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin shrink-0">
+          <div className="px-3 py-2 rounded-2xl bg-blue-50 border border-blue-200 text-center min-w-[70px]">
+            <div className="text-xs text-blue-800 font-bold">Ca dạy</div>
+            <div className="text-base font-black text-blue-950">{approvedReports.length}</div>
+          </div>
+
+          <div className="px-3 py-2 rounded-2xl bg-rose-50 border border-rose-200 text-center min-w-[70px]">
+            <div className="text-xs text-rose-800 font-bold">Nghỉ học</div>
+            <div className="text-base font-black text-rose-950">{frequentAbsences.length}</div>
+          </div>
+
+          <div className="px-3 py-2 rounded-2xl bg-orange-50 border border-orange-200 text-center min-w-[70px]">
+            <div className="text-xs text-orange-800 font-bold">Thiếu BTVN</div>
+            <div className="text-base font-black text-orange-950">{missingHomeworkList.length}</div>
+          </div>
+
+          <div className="px-3 py-2 rounded-2xl bg-amber-50 border border-amber-200 text-center min-w-[70px]">
+            <div className="text-xs text-amber-800 font-bold">Nhắc nhở</div>
+            <div className="text-base font-black text-amber-950">{repeatedIssues.length}</div>
+          </div>
+
+          <div className="px-3 py-2 rounded-2xl bg-emerald-50 border border-emerald-200 text-center min-w-[70px]">
+            <div className="text-xs text-emerald-800 font-bold">Tuyên dương</div>
+            <div className="text-base font-black text-emerald-950">{praiseList.length}</div>
           </div>
         </div>
       </div>
@@ -1122,26 +1562,35 @@ export const AIBulletinSection: React.FC<AIBulletinSectionProps> = ({
         </div>
       ) : (
         /* Empty State */
-        <div className="bg-white rounded-3xl border-2 border-dashed border-slate-300 p-8 sm:p-12 text-center space-y-4">
+        <div className="bg-white rounded-3xl border-2 border-dashed border-blue-200 p-8 sm:p-12 text-center space-y-4 shadow-sm">
           <div className="w-16 h-16 rounded-3xl bg-blue-100 text-blue-900 flex items-center justify-center mx-auto shadow-sm">
-            <BrainCircuit className="w-8 h-8" />
+            <BrainCircuit className="w-8 h-8 text-blue-950" />
           </div>
           <div className="max-w-md mx-auto space-y-1.5">
             <h3 className="text-lg font-black text-slate-900">
-              Chưa có bản tin nào cho giai đoạn này
+              Chưa có bản tin lưu trữ cho: {selectedClassName} ({timeframeLabel})
             </h3>
             <p className="text-xs text-slate-500 font-medium leading-relaxed">
-              Nhấn nút <strong>"Tạo Bản tin AI ngay"</strong> bên trên để Gemini tự động quét tất cả các báo cáo ca dạy đã được duyệt và lập thông báo hoàn chỉnh!
+              Hệ thống đã chuẩn bị sẵn <strong>{approvedReports.length} ca dạy đã duyệt</strong> và trích xuất đầy đủ học sinh vắng, thiếu BTVN, lỗi sai cho {selectedClassName}. Nhấn nút dưới đây để AI Gemini viết bản tin hoàn chỉnh gửi Zalo!
             </p>
           </div>
           <button
             type="button"
             onClick={handleGenerateBulletin}
             disabled={isGenerating}
-            className="btn-3d-amber text-xs px-5 py-2.5"
+            className="btn-3d-amber text-xs px-6 py-3 shadow-md"
           >
-            <Sparkles className="w-4 h-4 text-slate-950" />
-            <span>Tạo bản tin với AI Gemini</span>
+            {isGenerating ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin text-slate-950" />
+                <span>AI Gemini đang tạo bản tin cho {selectedClassName}...</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4 text-slate-950" />
+                <span>Tạo Bản Tin AI cho {selectedClassName}</span>
+              </>
+            )}
           </button>
         </div>
       )}

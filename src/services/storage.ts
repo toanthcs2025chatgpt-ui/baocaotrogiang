@@ -21,6 +21,9 @@ const STORAGE_KEYS = {
   ADMIN_USER: "thaythang_admin_user_v2",
   REPORT_DRAFT: "thaythang_report_draft_v1",
   STUDENT_ANALYSIS_CACHE: "thaythang_analysis_cache_v1",
+  MISCONCEPTIONS_CUSTOM: "clb_custom_math_misconceptions",
+  MISCONCEPTIONS_ORDER: "clb_math_misconceptions_order",
+  MISCONCEPTIONS_LOCKED: "clb_math_misconceptions_locked",
 };
 
 // Initial Seed Bulletins
@@ -185,8 +188,8 @@ const DEFAULT_USERS: User[] = [
     name: "Trợ giảng Nguyễn Minh Hùng",
     email: "hung.ta@thaythang.edu.vn",
     role: "assistant",
-    username: "hung.ta",
-    password: "123",
+    username: "nguyenminhhung",
+    password: "123456",
     phone: "0971.234.567",
     assignedClassIds: ["cls_9a1", "cls_8a2"],
     assistantId: "asst_1",
@@ -197,8 +200,8 @@ const DEFAULT_USERS: User[] = [
     name: "Trợ giảng Trần Thảo Vy",
     email: "vy.ta@thaythang.edu.vn",
     role: "assistant",
-    username: "vy.ta",
-    password: "123",
+    username: "tranthaovy",
+    password: "123456",
     phone: "0912.888.999",
     assignedClassIds: ["cls_6a1", "cls_7a1"],
     assistantId: "asst_2",
@@ -259,8 +262,8 @@ const DEFAULT_ASSISTANTS: Assistant[] = [
     name: "Nguyễn Minh Hùng",
     email: "hung.ta@thaythang.edu.vn",
     phone: "0971.234.567",
-    username: "hung.ta",
-    password: "123",
+    username: "nguyenminhhung",
+    password: "123456",
     classes: ["cls_9a1", "cls_8a2"],
     active: true,
     joinedDate: "2024-09-01",
@@ -271,8 +274,8 @@ const DEFAULT_ASSISTANTS: Assistant[] = [
     name: "Trần Thảo Vy",
     email: "vy.ta@thaythang.edu.vn",
     phone: "0912.888.999",
-    username: "vy.ta",
-    password: "123",
+    username: "tranthaovy",
+    password: "123456",
     classes: ["cls_6a1", "cls_7a1"],
     active: true,
     joinedDate: "2024-10-15",
@@ -283,8 +286,8 @@ const DEFAULT_ASSISTANTS: Assistant[] = [
     name: "Lê Đức Anh",
     email: "anh.ta@thaythang.edu.vn",
     phone: "0963.777.222",
-    username: "anh.ta",
-    password: "123",
+    username: "leducanh",
+    password: "123456",
     classes: ["cls_8a2"],
     active: true,
     joinedDate: "2025-01-10",
@@ -730,7 +733,7 @@ export const storageService = {
       email: asst.email,
       role: "assistant" as const,
       username: asst.username || asst.email?.split("@")[0] || asst.id,
-      password: asst.password || "123",
+      password: asst.password || "123456",
       phone: asst.phone,
       assignedClassIds: asst.classes || [],
       assistantId: asst.id,
@@ -1175,6 +1178,189 @@ export const storageService = {
       cache[studentId] = data;
       localStorage.setItem(STORAGE_KEYS.STUDENT_ANALYSIS_CACHE, JSON.stringify(cache));
     } catch (e) {}
+  },
+
+  // ==========================================
+  // BACKUP & RESTORE ALL SYSTEM DATA AS JSON
+  // ==========================================
+  getBackupPayload(): any {
+    return {
+      version: "1.0",
+      app: "CLB TOÁN THẦY THẮNG - HỆ THỐNG QUẢN LÝ BÁO CÁO TRỢ GIẢNG",
+      backupDate: new Date().toISOString(),
+      backupDateFormatted: new Date().toLocaleString("vi-VN"),
+      clubInfo: {
+        name: this.getSettings().clubName || "CLB TOÁN THẦY THẮNG",
+        slogan: this.getSettings().slogan || "Học Toán Bằng Tư Duy – Bứt Phá Mọi Kỳ Thi",
+        hotline: this.getSettings().hotline || "0988.123.456",
+        address: this.getSettings().address || "Số 18, Ngõ 120 Hoàng Quốc Việt, Cầu Giấy, Hà Nội",
+      },
+      settings: this.getSettings(),
+      adminUser: this.getAdminUser(),
+      assistants: this.getAssistants(),
+      classes: this.getClasses(),
+      students: this.getStudents(),
+      reports: this.getReports(),
+      bulletins: this.getBulletins(),
+      notifications: this.getNotifications(),
+    };
+  },
+
+  downloadBackupJSON(): string {
+    const payload = this.getBackupPayload();
+    const jsonString = JSON.stringify(payload, null, 2);
+    
+    // Format date as YYYY-MM-DD or DD-MM-YYYY (e.g., baocaotrogiang.2026-08-25.json)
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    const dateFormatted = `${year}-${month}-${day}`;
+    const filename = `baocaotrogiang.${dateFormatted}.json`;
+
+    const blob = new Blob([jsonString], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    return filename;
+  },
+
+  restoreBackupData(backupData: any): { success: boolean; message: string; count?: any } {
+    try {
+      if (!backupData || typeof backupData !== "object") {
+        throw new Error("Dữ liệu sao lưu không hợp lệ.");
+      }
+
+      if (Array.isArray(backupData.classes)) {
+        localStorage.setItem(STORAGE_KEYS.CLASSES, JSON.stringify(backupData.classes));
+      }
+      if (Array.isArray(backupData.assistants)) {
+        localStorage.setItem(STORAGE_KEYS.ASSISTANTS, JSON.stringify(backupData.assistants));
+      }
+      if (Array.isArray(backupData.students)) {
+        localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(backupData.students));
+      }
+      if (Array.isArray(backupData.reports)) {
+        localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(backupData.reports));
+      }
+      if (backupData.settings && typeof backupData.settings === "object") {
+        localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(backupData.settings));
+      }
+      if (backupData.adminUser && typeof backupData.adminUser === "object") {
+        localStorage.setItem(STORAGE_KEYS.ADMIN_USER, JSON.stringify(backupData.adminUser));
+      }
+      if (Array.isArray(backupData.bulletins)) {
+        localStorage.setItem(STORAGE_KEYS.BULLETINS, JSON.stringify(backupData.bulletins));
+      }
+      if (Array.isArray(backupData.notifications)) {
+        localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(backupData.notifications));
+      }
+
+      const counts = {
+        classes: backupData.classes?.length ?? 0,
+        assistants: backupData.assistants?.length ?? 0,
+        students: backupData.students?.length ?? 0,
+        reports: backupData.reports?.length ?? 0,
+      };
+
+      return {
+        success: true,
+        message: `Khôi phục thành công: ${counts.reports} báo cáo, ${counts.students} học sinh, ${counts.classes} lớp học, ${counts.assistants} trợ giảng!`,
+        count: counts,
+      };
+    } catch (e: any) {
+      return {
+        success: false,
+        message: `Lỗi khôi phục dữ liệu: ${e.message || "File JSON không đúng định dạng"}`,
+      };
+    }
+  },
+
+  // Math Misconceptions Configuration (Admin configures global template, Assistants have personalized config)
+  getMathMisconceptionsConfig(userId?: string): {
+    custom: string[];
+    order: string[];
+    isLocked: boolean;
+    globalCustom: string[];
+  } {
+    try {
+      // Global admin configuration
+      const customStr = localStorage.getItem(STORAGE_KEYS.MISCONCEPTIONS_CUSTOM);
+      const orderStr = localStorage.getItem(STORAGE_KEYS.MISCONCEPTIONS_ORDER);
+      const lockedStr = localStorage.getItem(STORAGE_KEYS.MISCONCEPTIONS_LOCKED);
+
+      const globalCustom: string[] = customStr ? JSON.parse(customStr) : [];
+      const globalOrder: string[] = orderStr ? JSON.parse(orderStr) : [];
+      const globalLocked: boolean = lockedStr !== null ? JSON.parse(lockedStr) : false;
+
+      // If user is assistant / specific user, load their personal overlay
+      if (userId && userId !== "admin") {
+        const userStorageKey = `clb_misconceptions_user_${userId}`;
+        const userStr = localStorage.getItem(userStorageKey);
+        if (userStr) {
+          const userConfig = JSON.parse(userStr);
+          return {
+            custom: userConfig.custom || [],
+            order: userConfig.order || [],
+            isLocked: userConfig.isLocked !== undefined ? userConfig.isLocked : false,
+            globalCustom,
+          };
+        }
+        return {
+          custom: [],
+          order: globalOrder.length > 0 ? globalOrder : [],
+          isLocked: false,
+          globalCustom,
+        };
+      }
+
+      return {
+        custom: globalCustom,
+        order: globalOrder,
+        isLocked: globalLocked,
+        globalCustom,
+      };
+    } catch {
+      return { custom: [], order: [], isLocked: false, globalCustom: [] };
+    }
+  },
+
+  saveMathMisconceptionsConfig(
+    config: { custom?: string[]; order?: string[]; isLocked?: boolean },
+    userId?: string
+  ): void {
+    if (userId && userId !== "admin") {
+      const userStorageKey = `clb_misconceptions_user_${userId}`;
+      try {
+        const existing = this.getMathMisconceptionsConfig(userId);
+        const updated = {
+          custom: config.custom !== undefined ? config.custom : existing.custom,
+          order: config.order !== undefined ? config.order : existing.order,
+          isLocked: config.isLocked !== undefined ? config.isLocked : existing.isLocked,
+        };
+        localStorage.setItem(userStorageKey, JSON.stringify(updated));
+      } catch (e) {
+        console.error("Error saving user misconceptions config", e);
+      }
+      return;
+    }
+
+    // Global Admin config
+    if (config.custom !== undefined) {
+      localStorage.setItem(STORAGE_KEYS.MISCONCEPTIONS_CUSTOM, JSON.stringify(config.custom));
+    }
+    if (config.order !== undefined) {
+      localStorage.setItem(STORAGE_KEYS.MISCONCEPTIONS_ORDER, JSON.stringify(config.order));
+    }
+    if (config.isLocked !== undefined) {
+      localStorage.setItem(STORAGE_KEYS.MISCONCEPTIONS_LOCKED, JSON.stringify(config.isLocked));
+    }
   },
 
   // Reset to seed demo data
