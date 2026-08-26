@@ -139,14 +139,23 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({ student,
       {/* Student Profile Card */}
       <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#1A472A] to-emerald-800 text-[#F4C542] flex items-center justify-center text-2xl font-black shadow-md">
-              {student.name.charAt(0)}
+          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
+            <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-3xl bg-gradient-to-br from-[#1A472A] to-emerald-800 text-[#F4C542] flex items-center justify-center text-4xl font-black shadow-lg overflow-hidden shrink-0 border-3 border-emerald-600 ring-4 ring-emerald-50">
+              {student.avatar ? (
+                <img
+                  src={student.avatar}
+                  alt={student.name}
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                student.name.charAt(0)
+              )}
             </div>
             <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-xl font-extrabold text-slate-900">{student.name}</h2>
-                <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">
+              <div className="flex items-center gap-2 flex-wrap justify-center sm:justify-start">
+                <h2 className="text-2xl font-black text-slate-900">{student.name}</h2>
+                <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-900 text-xs font-black">
                   {student.className || "Lớp Toán"}
                 </span>
               </div>

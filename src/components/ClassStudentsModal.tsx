@@ -17,6 +17,7 @@ import {
 import { ClassItem, Student, User } from "../types";
 import { storageService } from "../services/storage";
 import * as XLSX from "xlsx";
+import { AvatarUpload } from "./AvatarUpload";
 
 interface ClassStudentsModalProps {
   cls: ClassItem;
@@ -48,6 +49,7 @@ export const ClassStudentsModal: React.FC<ClassStudentsModalProps> = ({
   const [formParentName, setFormParentName] = useState("");
   const [formParentPhone, setFormParentPhone] = useState("");
   const [formNote, setFormNote] = useState("");
+  const [formAvatar, setFormAvatar] = useState("");
 
   // Batch form
   const [batchText, setBatchText] = useState("");
@@ -65,6 +67,7 @@ export const ClassStudentsModal: React.FC<ClassStudentsModalProps> = ({
     setFormParentName("");
     setFormParentPhone("");
     setFormNote("");
+    setFormAvatar("");
     setIsAddSingleOpen(true);
   };
 
@@ -75,6 +78,7 @@ export const ClassStudentsModal: React.FC<ClassStudentsModalProps> = ({
     setFormParentName(student.parentName || "");
     setFormParentPhone(student.parentPhone || "");
     setFormNote(student.note || "");
+    setFormAvatar(student.avatar || "");
     setIsAddSingleOpen(true);
   };
 
@@ -91,6 +95,7 @@ export const ClassStudentsModal: React.FC<ClassStudentsModalProps> = ({
       parentName: formParentName.trim() || undefined,
       parentPhone: formParentPhone.trim() || undefined,
       note: formNote.trim() || undefined,
+      avatar: formAvatar.trim() || undefined,
       joinedDate: editingStudent?.joinedDate || new Date().toISOString().slice(0, 10),
     };
 
@@ -318,11 +323,20 @@ export const ClassStudentsModal: React.FC<ClassStudentsModalProps> = ({
                   {filteredStudents.map((student, idx) => (
                     <tr key={student.id} className="hover:bg-blue-50/50 transition-colors">
                       <td className="p-3 text-center font-bold text-slate-400">{idx + 1}</td>
-                      <td className="p-3 font-black text-slate-900 flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-xl bg-blue-100 text-blue-800 font-black flex items-center justify-center text-xs">
-                          {student.name.charAt(0)}
+                      <td className="p-3 font-black text-slate-900 flex items-center gap-3">
+                        <div className="w-14 h-14 rounded-2xl bg-blue-100 text-blue-900 font-black flex items-center justify-center text-lg overflow-hidden shrink-0 border-2 border-blue-200 shadow-xs">
+                          {student.avatar ? (
+                            <img
+                              src={student.avatar}
+                              alt={student.name}
+                              className="w-full h-full object-cover"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            student.name.charAt(0)
+                          )}
                         </div>
-                        <span>{student.name}</span>
+                        <span className="text-sm">{student.name}</span>
                       </td>
                       <td className="p-3 text-slate-600">{student.dob || "-"}</td>
                       <td className="p-3 text-slate-700">{student.parentName || "-"}</td>
@@ -396,6 +410,15 @@ export const ClassStudentsModal: React.FC<ClassStudentsModalProps> = ({
             </div>
 
             <form onSubmit={handleSaveSingle} className="space-y-3.5 pt-4 text-xs">
+              {/* Avatar Upload */}
+              <AvatarUpload
+                value={formAvatar}
+                onChange={setFormAvatar}
+                name={formName}
+                type="student"
+                label="Ảnh đại diện học sinh:"
+              />
+
               <div>
                 <label className="font-bold text-slate-700 block mb-1">
                   Họ và tên học sinh: <span className="text-rose-500">*</span>

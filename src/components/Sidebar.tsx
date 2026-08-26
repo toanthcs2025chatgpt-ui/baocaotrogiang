@@ -86,13 +86,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="px-3 py-2 rounded-xl bg-blue-950/90 border border-blue-800/80 mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div
-              className={`w-6 h-6 rounded-lg flex items-center justify-center font-black text-[10px] ${
+              className={`w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center font-black text-[10px] shrink-0 border border-blue-700/60 ${
                 isAdmin
                   ? "bg-amber-400 text-slate-950"
                   : "bg-cyan-400 text-blue-950"
               }`}
             >
-              {isAdmin ? "GV" : "TG"}
+              {currentUser.avatar ? (
+                <img
+                  src={currentUser.avatar}
+                  alt={currentUser.name}
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : isAdmin ? (
+                "GV"
+              ) : (
+                "TG"
+              )}
             </div>
             <div className="overflow-hidden">
               <div className="text-xs font-black text-white truncate max-w-[130px]">

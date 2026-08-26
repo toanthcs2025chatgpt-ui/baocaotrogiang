@@ -27,6 +27,45 @@ interface ReportListViewProps {
   onEditReport: (report: Report) => void;
 }
 
+// Helpers for ISO Week and date range filtering
+function getIsoWeek(dateStr: string): string {
+  if (!dateStr) return "";
+  const d = new Date(dateStr + "T00:00:00");
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
+  const week1 = new Date(d.getFullYear(), 0, 4);
+  const weekNumber = 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
+  return `${d.getFullYear()}-W${String(weekNumber).padStart(2, "0")}`;
+}
+
+function isThisWeek(dateStr: string): boolean {
+  if (!dateStr) return false;
+  const target = new Date(dateStr + "T00:00:00");
+  const now = new Date();
+  const day = now.getDay() === 0 ? 7 : now.getDay();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - day + 1);
+  monday.setHours(0, 0, 0, 0);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  sunday.setHours(23, 59, 59, 999);
+  return target >= monday && target <= sunday;
+}
+
+function isLastWeek(dateStr: string): boolean {
+  if (!dateStr) return false;
+  const target = new Date(dateStr + "T00:00:00");
+  const now = new Date();
+  const day = now.getDay() === 0 ? 7 : now.getDay();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - day + 1 - 7);
+  monday.setHours(0, 0, 0, 0);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  sunday.setHours(23, 59, 59, 999);
+  return target >= monday && target <= sunday;
+}
+
 export const ReportListView: React.FC<ReportListViewProps> = ({
   currentUser,
   onNavigateCreate,
@@ -42,7 +81,21 @@ export const ReportListView: React.FC<ReportListViewProps> = ({
   const [filterClass, setFilterClass] = useState("all");
   const [filterAssistant, setFilterAssistant] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
-  const [filterDate, setFilterDate] = useState("");
+  const [filterMonth, setFilterMonth] = useState("all");
+  const [filterWeek, setFilterWeek] = useState<"all" | "this_week" | "last_week" | "custom">("all");
+  const [customWeek, setCustomWeek] = useState("");
+
+  // Extract available months from reports
+  const availableMonths = useMemo(() => {
+    const monthsSet = new Set<string>();
+    reports.forEach((r) => {
+      if (r.date) {
+        const ym = r.date.substring(0, 7);
+        if (ym) monthsSet.add(ym);
+      }
+    });
+    return Array.from(monthsSet).sort().reverse();
+  }, [reports]);
 
   // Modal
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
@@ -106,7 +159,20 @@ export const ReportListView: React.FC<ReportListViewProps> = ({
       if (filterClass !== "all" && r.classId !== filterClass) return false;
       if (isAdmin && filterAssistant !== "all" && r.assistantId !== filterAssistant) return false;
       if (filterStatus !== "all" && r.status !== filterStatus) return false;
-      if (filterDate && r.date !== filterDate) return false;
+
+      // Filter by Month
+      if (filterMonth !== "all" && !r.date.startsWith(filterMonth)) return false;
+
+      // Filter by Week
+      if (filterWeek !== "all") {
+        if (filterWeek === "this_week") {
+          if (!isThisWeek(r.date)) return false;
+        } else if (filterWeek === "last_week") {
+          if (!isLastWeek(r.date)) return false;
+        } else if (filterWeek === "custom" && customWeek) {
+          if (getIsoWeek(r.date) !== customWeek) return false;
+        }
+      }
 
       if (searchTerm.trim()) {
         const query = searchTerm.toLowerCase();
@@ -122,7 +188,7 @@ export const ReportListView: React.FC<ReportListViewProps> = ({
 
       return true;
     });
-  }, [reports, filterClass, filterAssistant, filterStatus, filterDate, searchTerm, isAdmin, currentUser, assistants]);
+  }, [reports, filterClass, filterAssistant, filterStatus, filterMonth, filterWeek, customWeek, searchTerm, isAdmin, currentUser, assistants]);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
@@ -236,28 +302,81 @@ export const ReportListView: React.FC<ReportListViewProps> = ({
           </div>
         </div>
 
-        {/* Date Filter & Active Filter Chips */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs text-slate-500">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-slate-700">Lọc theo ngày:</span>
-            <input
-              type="date"
-              value={filterDate}
-              onChange={(e) => setFilterDate(e.target.value)}
-              className="text-xs px-2.5 py-1.5 rounded-xl border-2 border-slate-200 bg-slate-50 font-semibold text-slate-800 focus:outline-none focus:border-blue-600"
-            />
-            {filterDate && (
-              <button
-                onClick={() => setFilterDate("")}
-                className="text-[11px] text-rose-600 hover:underline font-bold"
+        {/* Month & Week Filter Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t-2 border-slate-100 text-xs text-slate-600">
+          <div className="flex flex-wrap items-center gap-4">
+            {/* Filter by Month */}
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-slate-700 flex items-center gap-1.5">
+                <Calendar className="w-4 h-4 text-blue-600" />
+                Tháng:
+              </span>
+              <select
+                value={filterMonth}
+                onChange={(e) => setFilterMonth(e.target.value)}
+                className="text-xs px-3 py-1.5 rounded-xl border-2 border-slate-200 bg-slate-50 font-bold text-slate-800 focus:bg-white focus:outline-none focus:border-blue-600 shadow-2xs"
               >
-                Xóa lọc ngày
+                <option value="all">Tất cả các tháng</option>
+                {availableMonths.map((m) => {
+                  const [y, mon] = m.split("-");
+                  return (
+                    <option key={m} value={m}>
+                      Tháng {mon}/{y}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
+            {/* Filter by Week */}
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-slate-700 flex items-center gap-1.5">
+                <Clock className="w-4 h-4 text-indigo-600" />
+                Tuần:
+              </span>
+              <select
+                value={filterWeek}
+                onChange={(e) => {
+                  setFilterWeek(e.target.value as any);
+                  if (e.target.value !== "custom") {
+                    setCustomWeek("");
+                  }
+                }}
+                className="text-xs px-3 py-1.5 rounded-xl border-2 border-slate-200 bg-slate-50 font-bold text-slate-800 focus:bg-white focus:outline-none focus:border-blue-600 shadow-2xs"
+              >
+                <option value="all">Tất cả các tuần</option>
+                <option value="this_week">Tuần này (Hiện tại)</option>
+                <option value="last_week">Tuần trước</option>
+                <option value="custom">Chọn tuần cụ thể (Lịch)...</option>
+              </select>
+
+              {filterWeek === "custom" && (
+                <input
+                  type="week"
+                  value={customWeek}
+                  onChange={(e) => setCustomWeek(e.target.value)}
+                  className="text-xs px-2.5 py-1.5 rounded-xl border-2 border-indigo-300 bg-indigo-50/50 font-bold text-indigo-950 focus:outline-none focus:border-indigo-600 shadow-2xs"
+                />
+              )}
+            </div>
+
+            {/* Reset Time Filter Button */}
+            {(filterMonth !== "all" || filterWeek !== "all" || customWeek) && (
+              <button
+                onClick={() => {
+                  setFilterMonth("all");
+                  setFilterWeek("all");
+                  setCustomWeek("");
+                }}
+                className="text-[11px] text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 px-2.5 py-1 rounded-lg border border-rose-200 font-bold transition-colors"
+              >
+                ✕ Xóa lọc thời gian
               </button>
             )}
           </div>
 
-          <div>
-            Tìm thấy: <strong className="text-blue-900 font-black">{filteredReports.length}</strong> báo cáo
+          <div className="text-xs text-slate-500 font-medium">
+            Tìm thấy: <strong className="text-blue-900 font-black text-sm">{filteredReports.length}</strong> báo cáo
           </div>
         </div>
       </div>

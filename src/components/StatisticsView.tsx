@@ -19,7 +19,7 @@ import { exportUtils } from "../utils/exportUtils";
 import { AttendanceReportSection } from "./AttendanceReportSection";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
-import "jspdf-autotable";
+import autoTable from "jspdf-autotable";
 
 // Vietnamese Label Helpers
 const getAttendanceLabel = (val: string): { label: string; badgeClass: string } => {
@@ -239,7 +239,7 @@ export const StatisticsView: React.FC = () => {
       s.assistantName,
     ]);
 
-    (doc as any).autoTable({
+    autoTable(doc, {
       startY: 28,
       head: [["STT", "Ngay", "Lop", "Hoc sinh", "Chuyen can", "BTVN", "Diem", "Tiep thu", "Thai do", "Tro giang"]],
       body: rows,

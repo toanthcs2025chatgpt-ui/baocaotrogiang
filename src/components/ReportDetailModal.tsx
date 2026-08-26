@@ -361,9 +361,30 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {studentList.map((student, idx) => (
-                        <tr key={student.studentId} className="hover:bg-slate-50 transition-colors">
+                        <tr
+                          key={student.studentId}
+                          className={`${
+                            idx % 2 === 0 ? "bg-white" : "bg-slate-50/80"
+                          } hover:bg-blue-50/60 transition-colors`}
+                        >
                           <td className="p-3 text-center text-slate-400 font-bold">{idx + 1}</td>
-                          <td className="p-3 font-black text-slate-900">{student.studentName}</td>
+                          <td className="p-3">
+                            <div className="flex items-center gap-3">
+                              <div className="w-14 h-14 rounded-2xl bg-blue-100 text-blue-950 font-black text-lg flex items-center justify-center shrink-0 overflow-hidden border-2 border-blue-200 shadow-xs">
+                                {student.avatar ? (
+                                  <img
+                                    src={student.avatar}
+                                    alt={student.studentName}
+                                    className="w-full h-full object-cover"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                ) : (
+                                  student.studentName.charAt(0)
+                                )}
+                              </div>
+                              <span className="font-black text-slate-900 text-sm">{student.studentName}</span>
+                            </div>
+                          </td>
                           <td className="p-3">
                             <span
                               className={`px-2.5 py-0.5 rounded-lg text-[11px] font-black ${

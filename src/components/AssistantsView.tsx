@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { Assistant, ClassItem, User } from "../types";
 import { storageService } from "../services/storage";
+import { AvatarUpload } from "./AvatarUpload";
 
 interface AssistantsViewProps {
   currentUser: User;
@@ -55,6 +56,7 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
   const [phone, setPhone] = useState("");
   const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
+  const [avatar, setAvatar] = useState("");
   const [formError, setFormError] = useState("");
 
   // Toast / Copy Feedback State
@@ -89,6 +91,7 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
     setPhone("");
     setSelectedClasses([]);
     setNotes("");
+    setAvatar("");
     setFormError("");
     setIsUsernameCustomized(false);
     setIsModalOpen(true);
@@ -104,6 +107,7 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
     setPhone(asst.phone || "");
     setSelectedClasses(asst.classes || []);
     setNotes(asst.notes || "");
+    setAvatar(asst.avatar || "");
     setFormError("");
     setIsUsernameCustomized(true);
     setIsModalOpen(true);
@@ -164,6 +168,7 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
       email: email.trim() || `${cleanUsername}@thaythang.edu.vn`,
       phone: phone.trim(),
       classes: selectedClasses,
+      avatar: avatar.trim() || undefined,
       active: true,
       joinedDate: editingAssistant?.joinedDate || new Date().toISOString().slice(0, 10),
       notes: notes.trim(),
@@ -214,6 +219,7 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
       username: asst.username,
       password: asst.password,
       phone: asst.phone,
+      avatar: asst.avatar,
       assignedClassIds: asst.classes || [],
       assistantId: asst.id,
     };
@@ -392,16 +398,25 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
                           {idx + 1}
                         </td>
                         <td className="py-3 px-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-900 to-indigo-950 text-amber-400 flex items-center justify-center font-black text-xs shadow-xs shrink-0">
-                              {asst.name.charAt(0)}
+                          <div className="flex items-center gap-3.5">
+                            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-900 to-indigo-950 text-amber-400 flex items-center justify-center font-black text-xl shadow-sm shrink-0 overflow-hidden border-2 border-blue-300">
+                              {asst.avatar ? (
+                                <img
+                                  src={asst.avatar}
+                                  alt={asst.name}
+                                  className="w-full h-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                />
+                              ) : (
+                                asst.name.charAt(0)
+                              )}
                             </div>
                             <div>
-                              <span className="font-black text-slate-900 text-xs block group-hover:text-blue-900 transition-colors">
+                              <span className="font-black text-slate-900 text-sm block group-hover:text-blue-900 transition-colors">
                                 {asst.name}
                               </span>
-                              <div className="flex items-center gap-1.5 mt-0.5">
-                                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                              <div className="flex items-center gap-1.5 mt-1">
+                                <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
                                   {asst.active ? "Đang hoạt động" : "Tạm nghỉ"}
                                 </span>
                               </div>
@@ -540,17 +555,26 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
               <div className="space-y-3.5">
                 {/* Card Top: Avatar, Name & Action buttons */}
                 <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-900 to-indigo-950 text-amber-400 flex items-center justify-center font-black text-lg shadow-sm border border-blue-700">
-                      {asst.name.charAt(0)}
+                  <div className="flex items-center gap-4">
+                    <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-blue-900 to-indigo-950 text-amber-400 flex items-center justify-center font-black text-2xl shadow-md border-2 border-blue-700 overflow-hidden shrink-0">
+                      {asst.avatar ? (
+                        <img
+                          src={asst.avatar}
+                          alt={asst.name}
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        asst.name.charAt(0)
+                      )}
                     </div>
                     <div>
-                      <h3 className="font-black text-sm text-slate-900 leading-tight">{asst.name}</h3>
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <span className="inline-block text-[10px] font-black text-blue-900 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                      <h3 className="font-black text-base text-slate-900 leading-tight">{asst.name}</h3>
+                      <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                        <span className="inline-block text-xs font-black text-blue-900 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
                           Trợ giảng Toán
                         </span>
-                        <span className="inline-block text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-200">
+                        <span className="inline-block text-xs font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-200">
                           {asst.active ? "● Đang hoạt động" : "Tạm nghỉ"}
                         </span>
                       </div>
@@ -738,6 +762,15 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
             )}
 
             <form onSubmit={handleSave} className="space-y-4 pt-4 text-xs">
+              {/* Avatar Upload */}
+              <AvatarUpload
+                value={avatar}
+                onChange={setAvatar}
+                name={name}
+                type="assistant"
+                label="Ảnh đại diện trợ giảng:"
+              />
+
               {/* Họ tên */}
               <div>
                 <label className="font-black text-slate-700 block mb-1">

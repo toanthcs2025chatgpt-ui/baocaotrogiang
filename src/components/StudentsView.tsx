@@ -18,6 +18,7 @@ import {
 import { Student, ClassItem, User as UserType } from "../types";
 import { storageService } from "../services/storage";
 import { StudentProfileView } from "./StudentProfileView";
+import { AvatarUpload } from "./AvatarUpload";
 
 interface StudentsViewProps {
   currentUser: UserType;
@@ -43,6 +44,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ currentUser }) => {
   const [formParentName, setFormParentName] = useState("");
   const [formParentPhone, setFormParentPhone] = useState("");
   const [formNote, setFormNote] = useState("");
+  const [formAvatar, setFormAvatar] = useState("");
 
   const reload = () => {
     setStudents(storageService.getStudents());
@@ -56,6 +58,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ currentUser }) => {
     setFormParentName("");
     setFormParentPhone("");
     setFormNote("");
+    setFormAvatar("");
     setIsModalOpen(true);
   };
 
@@ -67,6 +70,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ currentUser }) => {
     setFormParentName(student.parentName || "");
     setFormParentPhone(student.parentPhone || "");
     setFormNote(student.note || "");
+    setFormAvatar(student.avatar || "");
     setIsModalOpen(true);
   };
 
@@ -84,6 +88,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ currentUser }) => {
       parentName: formParentName.trim(),
       parentPhone: formParentPhone.trim(),
       note: formNote.trim(),
+      avatar: formAvatar.trim() || undefined,
       joinedDate: editingStudent?.joinedDate || new Date().toISOString().slice(0, 10),
     };
 
@@ -251,16 +256,25 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ currentUser }) => {
                       {idx + 1}
                     </td>
                     <td className="py-3 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-700 to-indigo-900 text-amber-300 flex items-center justify-center font-black text-xs shadow-xs shrink-0">
-                          {student.name.charAt(0)}
+                      <div className="flex items-center gap-3.5">
+                        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-700 to-indigo-900 text-amber-300 flex items-center justify-center font-black text-xl shadow-sm shrink-0 overflow-hidden border-2 border-blue-200">
+                          {student.avatar ? (
+                            <img
+                              src={student.avatar}
+                              alt={student.name}
+                              className="w-full h-full object-cover"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            student.name.charAt(0)
+                          )}
                         </div>
                         <div>
-                          <span className="font-black text-slate-900 text-xs block group-hover:text-blue-900 transition-colors">
+                          <span className="font-black text-slate-900 text-sm block group-hover:text-blue-900 transition-colors">
                             {student.name}
                           </span>
                           {student.dob && (
-                            <span className="text-[10px] text-slate-400 font-medium">
+                            <span className="text-xs text-slate-400 font-medium">
                               NS: {student.dob}
                             </span>
                           )}
@@ -341,15 +355,24 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ currentUser }) => {
               >
                 <div className="space-y-3">
                   <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-700 to-indigo-900 text-amber-300 flex items-center justify-center font-black text-base shadow-sm border border-blue-600">
-                        {student.name.charAt(0)}
+                    <div className="flex items-center gap-4">
+                      <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-blue-700 to-indigo-900 text-amber-300 flex items-center justify-center font-black text-2xl shadow-md border-2 border-blue-300 overflow-hidden shrink-0">
+                        {student.avatar ? (
+                          <img
+                            src={student.avatar}
+                            alt={student.name}
+                            className="w-full h-full object-cover"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          student.name.charAt(0)
+                        )}
                       </div>
                       <div>
-                        <h3 className="font-black text-sm text-slate-900 leading-tight">
+                        <h3 className="font-black text-base text-slate-900 leading-tight">
                           {student.name}
                         </h3>
-                        <span className="inline-block text-[11px] font-bold text-blue-900 bg-blue-100 px-2.5 py-0.5 rounded-lg border border-blue-200 mt-1">
+                        <span className="inline-block text-xs font-bold text-blue-900 bg-blue-100 px-2.5 py-0.5 rounded-lg border border-blue-200 mt-1.5">
                           {student.className || "Chưa xếp lớp"}
                         </span>
                       </div>
@@ -427,6 +450,15 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ currentUser }) => {
             </div>
 
             <form onSubmit={handleSaveStudent} className="space-y-3.5 pt-4 text-xs">
+              {/* Avatar Upload */}
+              <AvatarUpload
+                value={formAvatar}
+                onChange={setFormAvatar}
+                name={formName}
+                type="student"
+                label="Ảnh đại diện học sinh:"
+              />
+
               <div>
                 <label className="font-bold text-slate-700 block mb-1">
                   Họ và tên học sinh: <span className="text-rose-500">*</span>

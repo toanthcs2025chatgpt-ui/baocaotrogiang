@@ -1771,10 +1771,19 @@ export const CreateReportView: React.FC<CreateReportViewProps> = ({
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="w-6 h-6 rounded-full bg-slate-100 text-slate-700 font-black text-[11px] flex items-center justify-center shrink-0">
-                        {idx + 1}
-                      </span>
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-700 font-black text-base flex items-center justify-center shrink-0 overflow-hidden border-2 border-slate-200 shadow-xs">
+                        {st.avatar ? (
+                          <img
+                            src={st.avatar}
+                            alt={st.studentName}
+                            className="w-full h-full object-cover"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          st.studentName.charAt(0)
+                        )}
+                      </div>
                       <span className="font-black text-xs text-slate-900 leading-tight">
                         {st.studentName}
                       </span>

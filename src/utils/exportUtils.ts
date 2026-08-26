@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
-import "jspdf-autotable";
+import autoTable from "jspdf-autotable";
 import { Report, StudentReportItem } from "../types";
 
 export const exportUtils = {
@@ -181,7 +181,7 @@ export const exportUtils = {
       s.comment || "-",
     ]);
 
-    (doc as any).autoTable({
+    autoTable(doc, {
       startY: 56,
       head: [["STT", "Hoc sinh", "Diem danh", "BTVN", "Ghi chu / Nhan xet"]],
       body: tableRows,
@@ -197,7 +197,7 @@ export const exportUtils = {
       },
     });
 
-    const finalY = (doc as any).lastAutoTable.finalY + 10;
+    const finalY = ((doc as any).lastAutoTable?.finalY ?? 180) + 10;
     doc.setFontSize(8);
     doc.setTextColor(100, 116, 139);
     doc.text(

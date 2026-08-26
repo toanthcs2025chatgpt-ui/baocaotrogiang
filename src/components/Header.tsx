@@ -300,13 +300,20 @@ export const Header: React.FC<HeaderProps> = ({
               }`}
             >
               <div
-                className={`w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center shrink-0 font-black text-xs ${
+                className={`w-9 h-9 rounded-xl overflow-hidden flex items-center justify-center shrink-0 font-black text-xs border border-blue-400/40 ${
                   isAdmin
                     ? "bg-amber-400 text-slate-950 shadow-xs"
                     : "bg-cyan-400 text-blue-950 shadow-xs"
                 }`}
               >
-                {isAdmin ? (
+                {currentUser.avatar ? (
+                  <img
+                    src={currentUser.avatar}
+                    alt={currentUser.name}
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : isAdmin ? (
                   <Shield className="w-4 h-4 text-slate-950" />
                 ) : (
                   <GraduationCap className="w-4 h-4 text-blue-950" />
@@ -332,16 +339,27 @@ export const Header: React.FC<HeaderProps> = ({
             {userDropdownOpen && (
               <div className="absolute right-0 mt-2 w-72 rounded-2xl bg-white text-slate-800 shadow-2xl border-2 border-blue-200 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
                 {/* User Current Profile Card */}
-                <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/80">
-                  <div className="flex items-center gap-2">
+                <div className="px-4 py-3.5 border-b border-slate-100 bg-slate-50/80">
+                  <div className="flex items-center gap-3">
                     <div
-                      className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs shrink-0 ${
+                      className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-sm shrink-0 overflow-hidden border-2 border-slate-200 shadow-xs ${
                         isAdmin
                           ? "bg-amber-400 text-slate-950"
                           : "bg-blue-600 text-white"
                       }`}
                     >
-                      {isAdmin ? "GV" : "TG"}
+                      {currentUser.avatar ? (
+                        <img
+                          src={currentUser.avatar}
+                          alt={currentUser.name}
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : isAdmin ? (
+                        "GV"
+                      ) : (
+                        "TG"
+                      )}
                     </div>
                     <div className="overflow-hidden">
                       <p className="font-black text-xs text-slate-900 truncate">
