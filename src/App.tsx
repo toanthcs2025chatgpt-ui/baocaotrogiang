@@ -11,6 +11,7 @@ import { ClassesView } from "./components/ClassesView";
 import { AssistantsView } from "./components/AssistantsView";
 import { StatisticsView } from "./components/StatisticsView";
 import { SettingsView } from "./components/SettingsView";
+import { ScheduleView } from "./components/ScheduleView";
 import { LoginModal } from "./components/LoginModal";
 import { LoginPage } from "./components/LoginPage";
 import { ChangePasswordModal } from "./components/ChangePasswordModal";
@@ -38,11 +39,15 @@ export function App() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
-  // Role constraint enforcement: Assistants can ONLY access create_report and reports_history
+  // Role constraint enforcement: Assistants can access create_report, reports_history, and schedule
   useEffect(() => {
     if (currentUser?.role === "assistant") {
-      if (activeTab !== "create_report" && activeTab !== "reports_history") {
-        setActiveTab("create_report");
+      if (
+        activeTab !== "create_report" &&
+        activeTab !== "reports_history" &&
+        activeTab !== "schedule"
+      ) {
+        setActiveTab("schedule");
       }
     }
   }, [currentUser, activeTab]);
@@ -52,7 +57,7 @@ export function App() {
     setCurrentUser(user);
     storageService.setCurrentUser(user);
     if (user.role === "assistant") {
-      setActiveTab("create_report");
+      setActiveTab("schedule");
     } else {
       setActiveTab("dashboard");
     }
@@ -66,6 +71,41 @@ export function App() {
 
   const handleEditReport = (report: Report) => {
     setEditingReport(report);
+    setActiveTab("create_report");
+  };
+
+  const handleCreateReportFromSchedule = (initialData: {
+    className?: string;
+    reportDate?: string;
+    reportShift?: string;
+    lessonTopic?: string;
+    lessonContent?: string;
+    homeworkAssigned?: string;
+  }) => {
+    const allClasses = storageService.getClasses();
+    const matchingClass = allClasses.find((c) => c.name === initialData.className) || allClasses[0];
+    const classId = matchingClass ? matchingClass.id : "cls_9a1";
+
+    const draftReport: Report = {
+      id: `rep_from_sched_${Date.now()}`,
+      classId: classId,
+      className: initialData.className || matchingClass?.name || "9A1 – Luyện Thi Vào 10 Chuyên",
+      date: initialData.reportDate || new Date().toISOString().split("T")[0],
+      shift: initialData.reportShift || "Ca 1 (18:30 – 20:30)",
+      teacherName: matchingClass?.teacherName || "Thầy Thắng (Chủ nhiệm)",
+      assistantId: currentUser?.assistantId || "asst_1",
+      assistantName: currentUser?.name || "Trợ giảng CLB",
+      lessonContent: initialData.lessonTopic
+        ? `${initialData.lessonTopic}${initialData.lessonContent ? `\n\n${initialData.lessonContent}` : ""}`
+        : initialData.lessonContent || "",
+      homeworkAssigned: initialData.homeworkAssigned || "",
+      students: [],
+      status: "draft",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    setEditingReport(draftReport);
     setActiveTab("create_report");
   };
 
@@ -187,6 +227,14 @@ export function App() {
                 currentUser={currentUser}
                 onNavigateTab={(tab) => setActiveTab(tab)}
                 onEditReport={handleEditReport}
+              />
+            )}
+
+            {/* Timetable / Thời Khóa Biểu - Available for Admin & Assistant */}
+            {activeTab === "schedule" && (
+              <ScheduleView
+                currentUser={currentUser}
+                onNavigateCreateReport={handleCreateReportFromSchedule}
               />
             )}
 

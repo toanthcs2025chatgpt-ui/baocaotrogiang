@@ -2,6 +2,7 @@ export type UserRole = "admin" | "assistant";
 
 export type TabType =
   | "dashboard"
+  | "schedule"
   | "create_report"
   | "reports_history"
   | "students"
@@ -9,6 +10,76 @@ export type TabType =
   | "assistants"
   | "statistics"
   | "settings";
+
+export type ShiftPeriod = "morning" | "afternoon" | "evening";
+
+export type ShiftId =
+  | "morning_1"
+  | "morning_2"
+  | "afternoon_1"
+  | "afternoon_2"
+  | "evening_1"
+  | "evening_2";
+
+export interface ShiftConfig {
+  id: ShiftId;
+  name: string; // "Ca Sáng 1", "Ca Sáng 2", "Ca Chiều 1", "Ca Chiều 2", "Ca Tối 1", "Ca Tối 2"
+  period: ShiftPeriod; // "morning" | "afternoon" | "evening"
+  startTime: string; // "07:30"
+  endTime: string; // "09:30"
+}
+
+export type ScheduleItemStatus = "upcoming" | "in_progress" | "completed" | "cancelled";
+
+export interface TimetableSlot {
+  id: string;
+  date: string; // "YYYY-MM-DD"
+  dayOfWeek: number; // 1 = Thứ Hai, ..., 7 = Chủ Nhật
+  shiftId: ShiftId;
+  classId?: string;
+  className: string;
+  teacherName?: string;
+  assistantId?: string;
+  assistantName?: string;
+  room?: string;
+  
+  // Lesson & Progress tracking fields
+  lessonTopic: string; // Tên bài học / Chuyên đề
+  lessonContent?: string; // Nội dung bài học (Lý thuyết, ví dụ, bài tập trọng tâm)
+  progressNote?: string; // Đã học đến phần nào (Ví dụ: "Đã xong Dạng 2, chữa bài 1-4")
+  homework?: string; // Bài tập về nhà giao
+  homeworkDeadline?: string; // Hạn nộp BTVN
+  generalNotes?: string; // Ghi chú thêm
+  status: ScheduleItemStatus; // "upcoming" | "in_progress" | "completed" | "cancelled"
+  
+  isRecurringMaster?: boolean; // Lịch cố định hàng tuần cả năm
+  applyToAllWeeks?: boolean;
+  
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface MasterTimetableSlot {
+  id: string;
+  dayOfWeek: number; // 1 = T2 ... 7 = CN
+  shiftId: ShiftId;
+  classId?: string;
+  className: string;
+  teacherName?: string;
+  assistantId?: string;
+  assistantName?: string;
+  room?: string;
+  lessonTopic?: string;
+  lessonContent?: string;
+  progressNote?: string;
+  homework?: string;
+  homeworkDeadline?: string;
+  generalNotes?: string;
+}
+
+export interface TimetableSettings {
+  shifts: ShiftConfig[];
+}
 
 export interface User {
   id: string;

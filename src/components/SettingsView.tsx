@@ -856,12 +856,42 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               Sao Lưu & Phục Hồi Toàn Bộ Dữ Liệu (File JSON)
             </h3>
             <p className="text-xs text-slate-500 font-medium mt-0.5">
-              Xuất hoặc nhập toàn bộ dữ liệu gồm: cấu hình hệ thống, danh sách học sinh, trợ giảng, các lớp học, toàn bộ báo cáo ca dạy, nhận xét chi tiết và bản tin AI.
+              Xuất hoặc nhập toàn bộ dữ liệu gồm: cấu hình hệ thống, danh sách học sinh, trợ giảng, lớp học, toàn bộ báo cáo ca dạy, thời khóa biểu và tiến độ bài học.
             </p>
           </div>
           <span className="text-[11px] font-mono font-bold px-2.5 py-1 rounded-lg bg-blue-50 text-blue-900 border border-blue-200 shrink-0 self-start sm:self-auto">
-            Định dạng: baocaotrogiang.ngày.json
+            Định dạng: baocaotrogiang.YYYY-MM-DD.json
           </span>
+        </div>
+
+        {/* Current Database Summary Badges */}
+        <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+          <div className="text-[11px] font-black text-slate-500 uppercase tracking-wider">
+            Thống kê dữ liệu hiện có trong ứng dụng:
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="px-2.5 py-1 rounded-xl bg-white border border-slate-300 font-bold text-slate-800 shadow-2xs">
+              📊 <strong>{storageService.getReports().length}</strong> Báo cáo
+            </span>
+            <span className="px-2.5 py-1 rounded-xl bg-white border border-slate-300 font-bold text-slate-800 shadow-2xs">
+              👨‍🎓 <strong>{storageService.getStudents().length}</strong> Học sinh
+            </span>
+            <span className="px-2.5 py-1 rounded-xl bg-white border border-slate-300 font-bold text-slate-800 shadow-2xs">
+              🏫 <strong>{storageService.getClasses().length}</strong> Lớp học
+            </span>
+            <span className="px-2.5 py-1 rounded-xl bg-white border border-slate-300 font-bold text-slate-800 shadow-2xs">
+              🧑‍🏫 <strong>{storageService.getAssistants().length}</strong> Trợ giảng
+            </span>
+            <span className="px-2.5 py-1 rounded-xl bg-white border border-slate-300 font-bold text-slate-800 shadow-2xs">
+              🗓️ <strong>{storageService.getMasterTimetableSlots().length}</strong> Ca mẫu TKB
+            </span>
+            <span className="px-2.5 py-1 rounded-xl bg-white border border-slate-300 font-bold text-slate-800 shadow-2xs">
+              📋 <strong>{storageService.getTimetableSlots().length}</strong> Ca lịch dạy
+            </span>
+            <span className="px-2.5 py-1 rounded-xl bg-emerald-50 border border-emerald-300 font-black text-emerald-900">
+              ✓ Toàn bộ cấu hình hệ thống & Tài khoản
+            </span>
+          </div>
         </div>
 
         {backupStatus.status !== "idle" && (

@@ -7,6 +7,11 @@ import {
   User,
   AppNotification,
   AIBulletin,
+  ShiftConfig,
+  TimetableSlot,
+  TimetableSettings,
+  MasterTimetableSlot,
+  ShiftId,
 } from "../types";
 
 const STORAGE_KEYS = {
@@ -24,7 +29,313 @@ const STORAGE_KEYS = {
   MISCONCEPTIONS_CUSTOM: "clb_custom_math_misconceptions",
   MISCONCEPTIONS_ORDER: "clb_math_misconceptions_order",
   MISCONCEPTIONS_LOCKED: "clb_math_misconceptions_locked",
+  TIMETABLE_SLOTS: "thaythang_timetable_slots_v2",
+  MASTER_TIMETABLE_SLOTS: "thaythang_master_timetable_slots_v2",
+  TIMETABLE_SETTINGS: "thaythang_timetable_settings_v2",
 };
+
+export const DEFAULT_SHIFT_CONFIGS: ShiftConfig[] = [
+  { id: "morning_1", name: "Ca Sáng 1", period: "morning", startTime: "07:30", endTime: "09:30" },
+  { id: "morning_2", name: "Ca Sáng 2", period: "morning", startTime: "09:45", endTime: "11:45" },
+  { id: "afternoon_1", name: "Ca Chiều 1", period: "afternoon", startTime: "14:00", endTime: "16:00" },
+  { id: "afternoon_2", name: "Ca Chiều 2", period: "afternoon", startTime: "16:15", endTime: "18:15" },
+  { id: "evening_1", name: "Ca Tối 1", period: "evening", startTime: "18:30", endTime: "20:30" },
+  { id: "evening_2", name: "Ca Tối 2", period: "evening", startTime: "20:45", endTime: "22:30" },
+];
+
+export const DEFAULT_MASTER_TIMETABLE_SLOTS: MasterTimetableSlot[] = [
+  {
+    id: "master_t2_e1",
+    dayOfWeek: 1, // Thứ 2
+    shiftId: "evening_1",
+    classId: "cls_9a1",
+    className: "9A1 – Luyện Thi Vào 10 Chuyên",
+    teacherName: "Thầy Thắng (Chủ nhiệm)",
+    assistantId: "asst_1",
+    assistantName: "Nguyễn Minh Hùng",
+    room: "Phòng 301 - Tầng 3",
+    lessonTopic: "Bất đẳng thức Cauchy & Kỹ thuật chọn điểm rơi",
+    lessonContent: "1. Nguyên lý BĐT Cauchy 2 số, 3 số\n2. Kỹ thuật tách, thêm bớt hạng tử đối xứng\n3. Hướng dẫn các bài tập chọn điểm rơi cơ bản và nâng cao",
+    progressNote: "Đã hoàn thành lý thuyết & bài tập 1-5 trang 32; Bài 6, 7 cho về nhà",
+    homework: "Làm bài tập 6, 7, 8 trong Phiếu Chuyên Đề 05 + Hoàn thiện đề thi thử số 03",
+    homeworkDeadline: "Thứ Năm hàng tuần",
+    generalNotes: "Học sinh cần lưu ý điều kiện dấu đẳng thức xảy ra; Lớp tập trung cao",
+  },
+  {
+    id: "master_t3_a1",
+    dayOfWeek: 2, // Thứ 3
+    shiftId: "afternoon_1",
+    classId: "cls_7a1",
+    className: "7A1 – Tư Duy Toán & Đại Số",
+    teacherName: "Thầy Thắng (Chủ nhiệm)",
+    assistantId: "asst_2",
+    assistantName: "Trần Thảo Vy",
+    room: "Phòng 202 - Tầng 2",
+    lessonTopic: "Đơn thức đồng dạng & Thu gọn biểu thức đại số",
+    lessonContent: "1. Khái niệm đơn thức đồng dạng, hệ số, phần biến\n2. Phép cộng, trừ các đơn thức đồng dạng\n3. Bài tập phân dạng và tính giá trị biểu thức",
+    progressNote: "Đã chữa xong dạng 1 (Cơ bản) và dạng 2 (Nâng cao); Học sinh nắm bài rất tốt",
+    homework: "Phiếu bài tập số 04 (Trang 12-15 Sách Bổ Trợ) – Nộp đầu ca học sau",
+    homeworkDeadline: "Thứ Sáu hàng tuần",
+    generalNotes: "Rèn chữ viết và cách trình bày ngay ngắn cho các con",
+  },
+  {
+    id: "master_t4_e1",
+    dayOfWeek: 3, // Thứ 4
+    shiftId: "evening_1",
+    classId: "cls_8a2",
+    className: "8A2 – Toán Nâng Cao & HSG",
+    teacherName: "Thầy Thắng (Chủ nhiệm)",
+    assistantId: "asst_3",
+    assistantName: "Lê Đức Anh",
+    room: "Phòng 302 - Tầng 3",
+    lessonTopic: "Hình bình hành & Ứng dụng chứng minh song song",
+    lessonContent: "1. Định nghĩa và 5 dấu hiệu nhận biết hình bình hành\n2. Kỹ thuật vẽ hình phụ và liên kết trung điểm\n3. Luyện tập chứng minh 3 điểm thẳng hàng và đường thẳng song song",
+    progressNote: "Đã dạy xong 5 dấu hiệu, đang luyện tập câu C hình và chữa bài tập 1-3",
+    homework: "Làm bài 1, 2, 3, 4 Phiếu Luyện Hình 03",
+    homeworkDeadline: "Thứ Bảy hàng tuần",
+    generalNotes: "Yêu cầu học sinh mang đầy đủ thước kẻ, compa vẽ hình chuẩn xác",
+  },
+  {
+    id: "master_t5_e1",
+    dayOfWeek: 4, // Thứ 5
+    shiftId: "evening_1",
+    classId: "cls_9a1",
+    className: "9A1 – Luyện Thi Vào 10 Chuyên",
+    teacherName: "Thầy Thắng (Chủ nhiệm)",
+    assistantId: "asst_1",
+    assistantName: "Nguyễn Minh Hùng",
+    room: "Phòng 301 - Tầng 3",
+    lessonTopic: "Chữa Đề Khảo Sát & Bổ Trợ BĐT Cauchy Nâng Cao",
+    lessonContent: "1. Chữa chi tiết câu I, II, III trong Đề KSCL\n2. Phân tích các lỗi trừ điểm đại số\n3. Luyện kỹ năng giải câu BĐT phân loại 0.5 - 1.0 điểm",
+    progressNote: "Kế hoạch: Chữa xong câu I-IV trong 90 phút đầu, 30 phút cuối phân tích câu V",
+    homework: "Làm lại các câu sai vào vở sửa bài + Chuẩn bị bài Phương trình vô tỷ",
+    homeworkDeadline: "Chủ Nhật hàng tuần",
+    generalNotes: "Kiểm tra kỹ vở sửa bài của từng học sinh",
+  },
+  {
+    id: "master_t6_a1",
+    dayOfWeek: 5, // Thứ 6
+    shiftId: "afternoon_1",
+    classId: "cls_7a1",
+    className: "7A1 – Tư Duy Toán & Đại Số",
+    teacherName: "Thầy Thắng (Chủ nhiệm)",
+    assistantId: "asst_2",
+    assistantName: "Trần Thảo Vy",
+    room: "Phòng 202 - Tầng 2",
+    lessonTopic: "Đa thức một biến & Cộng trừ đa thức",
+    lessonContent: "1. Khái niệm đa thức một biến, sắp xếp theo lũy thừa giảm dần\n2. Bậc, hệ số cao nhất, hệ số tự do\n3. Luyện tập cộng trừ đa thức theo cột dọc và hàng ngang",
+    progressNote: "Dự kiến học xong lý thuyết và 3 ví dụ mẫu phân dạng",
+    homework: "Bài tập 1 đến 5 Phiếu 05 Đa thức",
+    homeworkDeadline: "Thứ Ba tuần tới",
+    generalNotes: "Rèn chữ viết và tính cẩn thận khi cộng trừ dấu âm",
+  },
+  {
+    id: "master_t7_m1",
+    dayOfWeek: 6, // Thứ 7
+    shiftId: "morning_1",
+    classId: "cls_8a2",
+    className: "8A2 – Toán Nâng Cao & HSG",
+    teacherName: "Thầy Thắng (Chủ nhiệm)",
+    assistantId: "asst_3",
+    assistantName: "Lê Đức Anh",
+    room: "Phòng 302 - Tầng 3",
+    lessonTopic: "Hình chữ nhật – Tính chất & Dấu hiệu nhận biết",
+    lessonContent: "1. Định nghĩa và các tính chất đặc trưng của hình chữ nhật\n2. Dấu hiệu nhận biết liên quan đến góc vuông và đường chéo\n3. Bài toán áp dụng vào tam giác vuông có trung tuyến",
+    progressNote: "Dự kiến học định lý trung tuyến tam giác vuông và làm bài tập áp dụng",
+    homework: "Làm bài 1, 2, 3 trang 45 Sách Bài Tập",
+    homeworkDeadline: "Thứ Tư tuần tới",
+    generalNotes: "Học sinh lớp 8 chuẩn bị cho bài kiểm tra 15 phút đầu giờ",
+  },
+  {
+    id: "master_t7_m2",
+    dayOfWeek: 6, // Thứ 7
+    shiftId: "morning_2",
+    classId: "cls_9a1",
+    className: "9A1 – Luyện Thi Vào 10 Chuyên",
+    teacherName: "Thầy Thắng (Chủ nhiệm)",
+    assistantId: "asst_1",
+    assistantName: "Nguyễn Minh Hùng",
+    room: "Phòng 301 - Tầng 3",
+    lessonTopic: "Chuyên đề Bồi Dưỡng Học Sinh Giỏi – Số Học & Đồng Dư",
+    lessonContent: "1. Phép chia có dư và tính chất đồng dư thức\n2. Định lý Fermat nhỏ và ứng dụng tìm chữ số tận cùng\n3. Luyện giải các bài toán chia hết trong đề thi Chuyên",
+    progressNote: "Dự kiến làm quen định lý Fermat nhỏ và giải 4 bài toán mẫu",
+    homework: "Phiếu Số Học Nâng Cao số 02 (5 bài tập)",
+    homeworkDeadline: "Thứ Hai tuần tới",
+    generalNotes: "Dành cho nhóm học sinh đăng ký thi Chuyên Toán – Tin",
+  },
+  {
+    id: "master_cn_e1",
+    dayOfWeek: 7, // Chủ Nhật
+    shiftId: "evening_1",
+    classId: "cls_7a1",
+    className: "7A1 – Tư Duy Toán & Đại Số",
+    teacherName: "Thầy Thắng (Chủ nhiệm)",
+    assistantId: "asst_2",
+    assistantName: "Trần Thảo Vy",
+    room: "Phòng 202 - Tầng 2",
+    lessonTopic: "Luyện Tập Cuối Tuần & Đấu Trường Toán Học",
+    lessonContent: "1. Trắc nghiệm nhanh 15 câu ôn tập kiến thức tuần\n2. Giải bài toán vui tư duy logic\n3. Trao thưởng học sinh tiến bộ trong tuần",
+    progressNote: "Hoạt động củng cố nề nếp và tăng cảm hứng học toán",
+    homework: "Đọc trước bài mới và chuẩn bị câu hỏi cho ca tuần tới",
+    homeworkDeadline: "Thứ Sáu tuần tới",
+    generalNotes: "Trợ giảng chuẩn bị phiếu câu hỏi và phần quà nhỏ",
+  },
+];
+
+export const DEFAULT_TIMETABLE_SLOTS: TimetableSlot[] = [
+  {
+    id: "tt_slot_1",
+    date: "2026-08-24",
+    dayOfWeek: 1,
+    shiftId: "evening_1",
+    classId: "cls_9a1",
+    className: "9A1 – Luyện Thi Vào 10 Chuyên",
+    teacherName: "Thầy Thắng (Chủ nhiệm)",
+    assistantId: "asst_1",
+    assistantName: "Nguyễn Minh Hùng",
+    room: "Phòng 301 - Tầng 3",
+    lessonTopic: "Bất đẳng thức Cauchy & Kỹ thuật chọn điểm rơi",
+    lessonContent: "1. Nguyên lý BĐT Cauchy 2 số, 3 số\n2. Kỹ thuật tách, thêm bớt hạng tử đối xứng\n3. Hướng dẫn các bài tập chọn điểm rơi cơ bản và nâng cao",
+    progressNote: "Đã hoàn thành lý thuyết & bài tập 1-5 trang 32; Bài 6, 7 cho về nhà",
+    homework: "Làm bài tập 6, 7, 8 trong Phiếu Chuyên Đề 05 + Hoàn thiện đề thi thử số 03",
+    homeworkDeadline: "2026-08-27",
+    generalNotes: "Học sinh Khôi cần lưu ý điều kiện dấu đẳng thức xảy ra; Lớp tập trung cao",
+    status: "completed",
+  },
+  {
+    id: "tt_slot_2",
+    date: "2026-08-25",
+    dayOfWeek: 2,
+    shiftId: "afternoon_1",
+    classId: "cls_7a1",
+    className: "7A1 – Tư Duy Toán & Đại Số",
+    teacherName: "Thầy Thắng (Chủ nhiệm)",
+    assistantId: "asst_2",
+    assistantName: "Trần Thảo Vy",
+    room: "Phòng 202 - Tầng 2",
+    lessonTopic: "Đơn thức đồng dạng & Thu gọn biểu thức đại số",
+    lessonContent: "1. Khái niệm đơn thức đồng dạng, hệ số, phần biến\n2. Phép cộng, trừ các đơn thức đồng dạng\n3. Bài tập phân dạng và tính giá trị biểu thức",
+    progressNote: "Đã chữa xong dạng 1 (Cơ bản) và dạng 2 (Nâng cao); Học sinh nắm bài rất tốt",
+    homework: "Phiếu bài tập số 04 (Trang 12-15 Sách Bổ Trợ) – Nộp đầu ca học sau",
+    homeworkDeadline: "2026-08-28",
+    generalNotes: "Bạn Nam Phong cần chú ý giữ trật tự 15 phút đầu giờ",
+    status: "completed",
+  },
+  {
+    id: "tt_slot_3",
+    date: "2026-08-26",
+    dayOfWeek: 3,
+    shiftId: "evening_1",
+    classId: "cls_8a2",
+    className: "8A2 – Toán Nâng Cao & HSG",
+    teacherName: "Thầy Thắng (Chủ nhiệm)",
+    assistantId: "asst_3",
+    assistantName: "Lê Đức Anh",
+    room: "Phòng 302 - Tầng 3",
+    lessonTopic: "Hình bình hành & Ứng dụng chứng minh song song",
+    lessonContent: "1. Định nghĩa và 5 dấu hiệu nhận biết hình bình hành\n2. Kỹ thuật vẽ hình phụ và liên kết trung điểm\n3. Luyện tập chứng minh 3 điểm thẳng hàng và đường thẳng song song",
+    progressNote: "Đã dạy xong 5 dấu hiệu, đang luyện tập câu C hình và chữa bài tập 1-3",
+    homework: "Làm bài 1, 2, 3, 4 Phiếu Luyện Hình 03",
+    homeworkDeadline: "2026-08-29",
+    generalNotes: "Yêu cầu học sinh mang đầy đủ thước kẻ, compa vẽ hình chuẩn xác",
+    status: "in_progress",
+  },
+  {
+    id: "tt_slot_4",
+    date: "2026-08-27",
+    dayOfWeek: 4,
+    shiftId: "evening_1",
+    classId: "cls_9a1",
+    className: "9A1 – Luyện Thi Vào 10 Chuyên",
+    teacherName: "Thầy Thắng (Chủ nhiệm)",
+    assistantId: "asst_1",
+    assistantName: "Nguyễn Minh Hùng",
+    room: "Phòng 301 - Tầng 3",
+    lessonTopic: "Chữa Đề Khảo Sát Tháng 8 & Bổ Trợ BĐT Cauchy Nâng Cao",
+    lessonContent: "1. Chữa chi tiết câu I, II, III trong Đề KSCL Tháng 8\n2. Phân tích các lỗi trừ điểm đại số\n3. Luyện kỹ năng giải câu BĐT phân loại 0.5 - 1.0 điểm",
+    progressNote: "Kế hoạch: Chữa xong câu I-IV trong 90 phút đầu, 30 phút cuối phân tích câu V",
+    homework: "Làm lại các câu sai vào vở sửa bài + Chuẩn bị bài Phương trình vô tỷ",
+    homeworkDeadline: "2026-08-31",
+    generalNotes: "Kiểm tra kỹ vở sửa bài của từng học sinh",
+    status: "upcoming",
+  },
+  {
+    id: "tt_slot_5",
+    date: "2026-08-28",
+    dayOfWeek: 5,
+    shiftId: "afternoon_1",
+    classId: "cls_7a1",
+    className: "7A1 – Tư Duy Toán & Đại Số",
+    teacherName: "Thầy Thắng (Chủ nhiệm)",
+    assistantId: "asst_2",
+    assistantName: "Trần Thảo Vy",
+    room: "Phòng 202 - Tầng 2",
+    lessonTopic: "Đa thức một biến & Cộng trừ đa thức",
+    lessonContent: "1. Khái niệm đa thức một biến, sắp xếp theo lũy thừa giảm dần\n2. Bậc, hệ số cao nhất, hệ số tự do\n3. Luyện tập cộng trừ đa thức theo cột dọc và hàng ngang",
+    progressNote: "Dự kiến học xong lý thuyết và 3 ví dụ mẫu phân dạng",
+    homework: "Bài tập 1 đến 5 Phiếu 05 Đa thức",
+    homeworkDeadline: "2026-09-01",
+    generalNotes: "Rèn chữ viết và cách trình bày ngay ngắn cho các con",
+    status: "upcoming",
+  },
+  {
+    id: "tt_slot_6",
+    date: "2026-08-29",
+    dayOfWeek: 6,
+    shiftId: "morning_1",
+    classId: "cls_8a2",
+    className: "8A2 – Toán Nâng Cao & HSG",
+    teacherName: "Thầy Thắng (Chủ nhiệm)",
+    assistantId: "asst_3",
+    assistantName: "Lê Đức Anh",
+    room: "Phòng 302 - Tầng 3",
+    lessonTopic: "Hình chữ nhật – Tính chất & Dấu hiệu nhận biết",
+    lessonContent: "1. Định nghĩa và các tính chất đặc trưng của hình chữ nhật\n2. Dấu hiệu nhận biết liên quan đến góc vuông và đường chéo\n3. Bài toán áp dụng vào tam giác vuông có trung tuyến",
+    progressNote: "Dự kiến học định lý trung tuyến tam giác vuông và làm bài tập áp dụng",
+    homework: "Làm bài 1, 2, 3 trang 45 Sách Bài Tập",
+    homeworkDeadline: "2026-09-02",
+    generalNotes: "Học sinh lớp 8 chuẩn bị cho bài kiểm tra 15 phút đầu giờ",
+    status: "upcoming",
+  },
+  {
+    id: "tt_slot_7",
+    date: "2026-08-29",
+    dayOfWeek: 6,
+    shiftId: "morning_2",
+    classId: "cls_9a1",
+    className: "9A1 – Luyện Thi Vào 10 Chuyên",
+    teacherName: "Thầy Thắng (Chủ nhiệm)",
+    assistantId: "asst_1",
+    assistantName: "Nguyễn Minh Hùng",
+    room: "Phòng 301 - Tầng 3",
+    lessonTopic: "Chuyên đề Bồi Dưỡng Học Sinh Giỏi – Số Học & Đồng Dư",
+    lessonContent: "1. Phép chia có dư và tính chất đồng dư thức\n2. Định lý Fermat nhỏ và ứng dụng tìm chữ số tận cùng\n3. Luyện giải các bài toán chia hết trong đề thi Chuyên",
+    progressNote: "Dự kiến làm quen định lý Fermat nhỏ và giải 4 bài toán mẫu",
+    homework: "Phiếu Số Học Nâng Cao số 02 (5 bài tập)",
+    homeworkDeadline: "2026-09-03",
+    generalNotes: "Dành cho nhóm học sinh đăng ký thi Chuyên Toán – Tin",
+    status: "upcoming",
+  },
+  {
+    id: "tt_slot_8",
+    date: "2026-08-30",
+    dayOfWeek: 7,
+    shiftId: "evening_1",
+    classId: "cls_7a1",
+    className: "7A1 – Tư Duy Toán & Đại Số",
+    teacherName: "Thầy Thắng (Chủ nhiệm)",
+    assistantId: "asst_2",
+    assistantName: "Trần Thảo Vy",
+    room: "Phòng 202 - Tầng 2",
+    lessonTopic: "Luyện Tập Cuối Tuần & Thi Đấu Đấu Trường Toán Học",
+    lessonContent: "1. Trắc nghiệm nhanh 15 câu ôn tập kiến thức tuần\n2. Giải bài toán vui tư duy logic\n3. Trao thưởng học sinh tiến bộ trong tuần",
+    progressNote: "Hoạt động củng cố nề nếp và tăng cảm hứng học toán",
+    homework: "Đọc trước bài mới và chuẩn bị câu hỏi cho ca tuần tới",
+    homeworkDeadline: "2026-09-04",
+    generalNotes: "Trợ giảng chuẩn bị phiếu câu hỏi và phần quà nhỏ",
+    status: "upcoming",
+  },
+];
 
 // Initial Seed Bulletins
 const DEFAULT_BULLETINS: AIBulletin[] = [
@@ -842,21 +1153,155 @@ export const storageService = {
   getClasses(): ClassItem[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.CLASSES);
-      if (data) return JSON.parse(data);
+      if (data) {
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
     } catch (e) {}
     localStorage.setItem(STORAGE_KEYS.CLASSES, JSON.stringify(DEFAULT_CLASSES));
     return DEFAULT_CLASSES;
   },
 
+  // Single Source of Truth for Class Names across the whole application
+  normalizeClassReference(classId?: string, className?: string): { classId: string; className: string } {
+    const classes = this.getClasses();
+    let mappedId = classId;
+    if (classId === "cls_1") mappedId = "cls_9a1";
+    if (classId === "cls_2") mappedId = "cls_7a1";
+    if (classId === "cls_3") mappedId = "cls_8a2";
+
+    // 1. Match by class ID
+    const foundById = classes.find((c) => c.id === mappedId || c.id === classId);
+    if (foundById) {
+      return { classId: foundById.id, className: foundById.name };
+    }
+
+    // 2. Match by class Name
+    if (className) {
+      const cleanName = className.trim().toLowerCase();
+      const foundByName = classes.find((c) => {
+        const cName = c.name.toLowerCase();
+        return cName === cleanName || cName.includes(cleanName) || cleanName.includes(cName);
+      });
+      if (foundByName) {
+        return { classId: foundByName.id, className: foundByName.name };
+      }
+    }
+
+    // 3. Fallback to first available class or default
+    return {
+      classId: mappedId || classes[0]?.id || "cls_9a1",
+      className: className || classes[0]?.name || "9A1 – Luyện Thi Vào 10 Chuyên",
+    };
+  },
+
+  // Cascade any class name update in "Mục Lớp Học" to TKB, Master TKB, Sổ Dạy Học / Báo Cáo, Học Sinh
+  cascadeClassNameUpdate(classId: string, newClassName: string, oldClassName?: string | null): void {
+    try {
+      // Synchronize Students
+      const rawStudents = localStorage.getItem(STORAGE_KEYS.STUDENTS);
+      if (rawStudents) {
+        const students: Student[] = JSON.parse(rawStudents);
+        let studentChanged = false;
+        const updatedStudents = students.map((s) => {
+          if (s.classId === classId || (oldClassName && s.className === oldClassName)) {
+            studentChanged = true;
+            return { ...s, classId, className: newClassName };
+          }
+          return s;
+        });
+        if (studentChanged) {
+          localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(updatedStudents));
+        }
+      }
+
+      // Synchronize Master Timetable Slots
+      const rawMaster = localStorage.getItem(STORAGE_KEYS.MASTER_TIMETABLE_SLOTS);
+      if (rawMaster) {
+        const masters: MasterTimetableSlot[] = JSON.parse(rawMaster);
+        let masterChanged = false;
+        const updatedMasters = masters.map((m) => {
+          if (m.classId === classId || (oldClassName && m.className === oldClassName)) {
+            masterChanged = true;
+            return { ...m, classId, className: newClassName };
+          }
+          return m;
+        });
+        if (masterChanged) {
+          localStorage.setItem(STORAGE_KEYS.MASTER_TIMETABLE_SLOTS, JSON.stringify(updatedMasters));
+        }
+      }
+
+      // Synchronize Specific Timetable Slots
+      const rawSlots = localStorage.getItem(STORAGE_KEYS.TIMETABLE_SLOTS);
+      if (rawSlots) {
+        const slots: TimetableSlot[] = JSON.parse(rawSlots);
+        let slotsChanged = false;
+        const updatedSlots = slots.map((s) => {
+          if (s.classId === classId || (oldClassName && s.className === oldClassName)) {
+            slotsChanged = true;
+            return { ...s, classId, className: newClassName };
+          }
+          return s;
+        });
+        if (slotsChanged) {
+          localStorage.setItem(STORAGE_KEYS.TIMETABLE_SLOTS, JSON.stringify(updatedSlots));
+        }
+      }
+
+      // Synchronize Reports / Teaching History
+      const rawReports = localStorage.getItem(STORAGE_KEYS.REPORTS);
+      if (rawReports) {
+        const reports: Report[] = JSON.parse(rawReports);
+        let reportsChanged = false;
+        const updatedReports = reports.map((r) => {
+          if (r.classId === classId || (oldClassName && r.className === oldClassName)) {
+            reportsChanged = true;
+            return { ...r, classId, className: newClassName };
+          }
+          return r;
+        });
+        if (reportsChanged) {
+          localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(updatedReports));
+        }
+      }
+
+      // Synchronize Notifications
+      const rawNotifs = localStorage.getItem(STORAGE_KEYS.NOTIFICATIONS);
+      if (rawNotifs) {
+        const notifs: AppNotification[] = JSON.parse(rawNotifs);
+        let notifsChanged = false;
+        const updatedNotifs = notifs.map((n) => {
+          if (oldClassName && n.className === oldClassName) {
+            notifsChanged = true;
+            return { ...n, className: newClassName };
+          }
+          return n;
+        });
+        if (notifsChanged) {
+          localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(updatedNotifs));
+        }
+      }
+    } catch (e) {
+      console.error("Error cascading class update:", e);
+    }
+  },
+
   saveClass(cls: ClassItem): void {
     const list = this.getClasses();
     const idx = list.findIndex((c) => c.id === cls.id);
+    const oldName = idx >= 0 ? list[idx].name : null;
     if (idx >= 0) {
       list[idx] = cls;
     } else {
       list.push(cls);
     }
     localStorage.setItem(STORAGE_KEYS.CLASSES, JSON.stringify(list));
+
+    // Cascade name change across the entire application
+    this.cascadeClassNameUpdate(cls.id, cls.name, oldName);
   },
 
   deleteClass(classId: string): void {
@@ -921,7 +1366,15 @@ export const storageService = {
   getStudents(): Student[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.STUDENTS);
-      if (data) return JSON.parse(data);
+      if (data) {
+        const parsed: Student[] = JSON.parse(data);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((s) => {
+            const { classId, className } = this.normalizeClassReference(s.classId, s.className);
+            return { ...s, classId, className };
+          });
+        }
+      }
     } catch (e) {}
     localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(DEFAULT_STUDENTS));
     return DEFAULT_STUDENTS;
@@ -929,11 +1382,13 @@ export const storageService = {
 
   saveStudent(std: Student): void {
     const list = this.getStudents();
+    const { classId, className } = this.normalizeClassReference(std.classId, std.className);
+    const normalizedStd = { ...std, classId, className };
     const idx = list.findIndex((s) => s.id === std.id);
     if (idx >= 0) {
-      list[idx] = std;
+      list[idx] = normalizedStd;
     } else {
-      list.push(std);
+      list.push(normalizedStd);
     }
     localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(list));
   },
@@ -951,7 +1406,15 @@ export const storageService = {
   getReports(): Report[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.REPORTS);
-      if (data) return JSON.parse(data);
+      if (data) {
+        const parsed: Report[] = JSON.parse(data);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((r) => {
+            const { classId, className } = this.normalizeClassReference(r.classId, r.className);
+            return { ...r, classId, className };
+          });
+        }
+      }
     } catch (e) {}
     localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(DEFAULT_REPORTS));
     return DEFAULT_REPORTS;
@@ -959,13 +1422,15 @@ export const storageService = {
 
   saveReport(report: Report): void {
     const list = this.getReports();
-    const idx = list.findIndex((r) => r.id === report.id);
+    const { classId, className } = this.normalizeClassReference(report.classId, report.className);
+    const normalizedReport: Report = { ...report, classId, className };
+    const idx = list.findIndex((r) => r.id === normalizedReport.id);
     const prevReport = idx >= 0 ? list[idx] : null;
 
     if (idx >= 0) {
-      list[idx] = report;
+      list[idx] = normalizedReport;
     } else {
-      list.unshift(report); // Add latest to top
+      list.unshift(normalizedReport); // Add latest to top
     }
     localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(list));
 
@@ -1185,8 +1650,8 @@ export const storageService = {
   // ==========================================
   getBackupPayload(): any {
     return {
-      version: "1.0",
-      app: "CLB TOÁN THẦY THẮNG - HỆ THỐNG QUẢN LÝ BÁO CÁO TRỢ GIẢNG",
+      version: "2.0",
+      app: "CLB TOÁN THẦY THẮNG - HỆ THỐNG QUẢN LÝ BÁO CÁO TRỢ GIẢNG & THỜI KHÓA BIỂU",
       backupDate: new Date().toISOString(),
       backupDateFormatted: new Date().toLocaleString("vi-VN"),
       clubInfo: {
@@ -1203,6 +1668,10 @@ export const storageService = {
       reports: this.getReports(),
       bulletins: this.getBulletins(),
       notifications: this.getNotifications(),
+      timetableSlots: this.getTimetableSlots(),
+      masterTimetableSlots: this.getMasterTimetableSlots(),
+      timetableSettings: this.getTimetableSettings(),
+      mathMisconceptions: this.getMathMisconceptionsConfig("admin"),
     };
   },
 
@@ -1210,7 +1679,7 @@ export const storageService = {
     const payload = this.getBackupPayload();
     const jsonString = JSON.stringify(payload, null, 2);
     
-    // Format date as YYYY-MM-DD or DD-MM-YYYY (e.g., baocaotrogiang.2026-08-25.json)
+    // Format date as YYYY-MM-DD (e.g., baocaotrogiang.2026-08-26.json)
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, "0");
@@ -1237,29 +1706,90 @@ export const storageService = {
         throw new Error("Dữ liệu sao lưu không hợp lệ.");
       }
 
-      if (Array.isArray(backupData.classes)) {
+      // 1. Classes first so normalization works accurately
+      if (Array.isArray(backupData.classes) && backupData.classes.length > 0) {
         localStorage.setItem(STORAGE_KEYS.CLASSES, JSON.stringify(backupData.classes));
       }
+
+      // 2. Assistants
       if (Array.isArray(backupData.assistants)) {
         localStorage.setItem(STORAGE_KEYS.ASSISTANTS, JSON.stringify(backupData.assistants));
       }
+
+      // 3. Students (normalize class references)
       if (Array.isArray(backupData.students)) {
-        localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(backupData.students));
+        const normalizedStudents = backupData.students.map((s: any) => {
+          const { classId, className } = this.normalizeClassReference(s.classId, s.className);
+          return { ...s, classId, className };
+        });
+        localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(normalizedStudents));
       }
+
+      // 4. Reports (normalize class references)
       if (Array.isArray(backupData.reports)) {
-        localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(backupData.reports));
+        const normalizedReports = backupData.reports.map((r: any) => {
+          const { classId, className } = this.normalizeClassReference(r.classId, r.className);
+          return { ...r, classId, className };
+        });
+        localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(normalizedReports));
       }
+
+      // 5. Settings (Club info, API keys, Google Drive, Firebase)
       if (backupData.settings && typeof backupData.settings === "object") {
         localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(backupData.settings));
       }
+
+      // 6. Admin User credentials
       if (backupData.adminUser && typeof backupData.adminUser === "object") {
         localStorage.setItem(STORAGE_KEYS.ADMIN_USER, JSON.stringify(backupData.adminUser));
       }
+
+      // 7. Bulletins
       if (Array.isArray(backupData.bulletins)) {
         localStorage.setItem(STORAGE_KEYS.BULLETINS, JSON.stringify(backupData.bulletins));
       }
+
+      // 8. Notifications
       if (Array.isArray(backupData.notifications)) {
         localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(backupData.notifications));
+      }
+
+      // 9. Master Timetable Slots (Weekly Recurring Schedule)
+      const rawMaster = backupData.masterTimetableSlots || backupData.masterSlots;
+      if (Array.isArray(rawMaster)) {
+        const normalizedMasters = rawMaster.map((m: any) => {
+          const { classId, className } = this.normalizeClassReference(m.classId, m.className);
+          return { ...m, classId, className };
+        });
+        localStorage.setItem(STORAGE_KEYS.MASTER_TIMETABLE_SLOTS, JSON.stringify(normalizedMasters));
+      }
+
+      // 10. Specific Timetable Slots (Dated sessions & Teaching History)
+      const rawSlots = backupData.timetableSlots || backupData.slots;
+      if (Array.isArray(rawSlots)) {
+        const normalizedSlots = rawSlots.map((s: any) => {
+          const { classId, className } = this.normalizeClassReference(s.classId, s.className);
+          return { ...s, classId, className };
+        });
+        localStorage.setItem(STORAGE_KEYS.TIMETABLE_SLOTS, JSON.stringify(normalizedSlots));
+      }
+
+      // 11. Timetable Settings (Shift configs)
+      if (backupData.timetableSettings && typeof backupData.timetableSettings === "object") {
+        localStorage.setItem(STORAGE_KEYS.TIMETABLE_SETTINGS, JSON.stringify(backupData.timetableSettings));
+      }
+
+      // 12. Math Misconceptions configuration
+      if (backupData.mathMisconceptions && typeof backupData.mathMisconceptions === "object") {
+        if (Array.isArray(backupData.mathMisconceptions.custom)) {
+          localStorage.setItem(STORAGE_KEYS.MISCONCEPTIONS_CUSTOM, JSON.stringify(backupData.mathMisconceptions.custom));
+        }
+        if (Array.isArray(backupData.mathMisconceptions.order)) {
+          localStorage.setItem(STORAGE_KEYS.MISCONCEPTIONS_ORDER, JSON.stringify(backupData.mathMisconceptions.order));
+        }
+        if (typeof backupData.mathMisconceptions.isLocked === "boolean") {
+          localStorage.setItem(STORAGE_KEYS.MISCONCEPTIONS_LOCKED, JSON.stringify(backupData.mathMisconceptions.isLocked));
+        }
       }
 
       const counts = {
@@ -1267,11 +1797,14 @@ export const storageService = {
         assistants: backupData.assistants?.length ?? 0,
         students: backupData.students?.length ?? 0,
         reports: backupData.reports?.length ?? 0,
+        timetableSlots: (backupData.timetableSlots || backupData.slots)?.length ?? 0,
+        masterTimetableSlots: (backupData.masterTimetableSlots || backupData.masterSlots)?.length ?? 0,
+        bulletins: backupData.bulletins?.length ?? 0,
       };
 
       return {
         success: true,
-        message: `Khôi phục thành công: ${counts.reports} báo cáo, ${counts.students} học sinh, ${counts.classes} lớp học, ${counts.assistants} trợ giảng!`,
+        message: `Khôi phục thành công toàn bộ: ${counts.reports} báo cáo, ${counts.students} học sinh, ${counts.classes} lớp học, ${counts.assistants} trợ giảng, ${counts.masterTimetableSlots} ca mẫu cố định, ${counts.timetableSlots} ca học TKB và toàn bộ cấu hình cài đặt!`,
         count: counts,
       };
     } catch (e: any) {
@@ -1363,6 +1896,342 @@ export const storageService = {
     }
   },
 
+  // ==================== TIMETABLE & SCHEDULE ====================
+  getTimetableSettings(): TimetableSettings {
+    const raw = localStorage.getItem(STORAGE_KEYS.TIMETABLE_SETTINGS);
+    if (!raw) {
+      return { shifts: DEFAULT_SHIFT_CONFIGS };
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.shifts) && parsed.shifts.length > 0) {
+        return parsed;
+      }
+      return { shifts: DEFAULT_SHIFT_CONFIGS };
+    } catch {
+      return { shifts: DEFAULT_SHIFT_CONFIGS };
+    }
+  },
+
+  saveTimetableSettings(settings: TimetableSettings): void {
+    localStorage.setItem(STORAGE_KEYS.TIMETABLE_SETTINGS, JSON.stringify(settings));
+  },
+
+  getMasterTimetableSlots(): MasterTimetableSlot[] {
+    const raw = localStorage.getItem(STORAGE_KEYS.MASTER_TIMETABLE_SLOTS);
+    if (!raw) {
+      localStorage.setItem(STORAGE_KEYS.MASTER_TIMETABLE_SLOTS, JSON.stringify(DEFAULT_MASTER_TIMETABLE_SLOTS));
+      return DEFAULT_MASTER_TIMETABLE_SLOTS;
+    }
+    try {
+      const parsed: MasterTimetableSlot[] = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((m) => {
+          const { classId, className } = this.normalizeClassReference(m.classId, m.className);
+          return { ...m, classId, className };
+        });
+      }
+      return DEFAULT_MASTER_TIMETABLE_SLOTS;
+    } catch {
+      return DEFAULT_MASTER_TIMETABLE_SLOTS;
+    }
+  },
+
+  saveMasterTimetableSlots(masterSlots: MasterTimetableSlot[]): void {
+    const normalized = masterSlots.map((m) => {
+      const { classId, className } = this.normalizeClassReference(m.classId, m.className);
+      return { ...m, classId, className };
+    });
+    localStorage.setItem(STORAGE_KEYS.MASTER_TIMETABLE_SLOTS, JSON.stringify(normalized));
+  },
+
+  // Save/Update a Master Recurring slot
+  saveMasterSlot(masterSlot: MasterTimetableSlot): MasterTimetableSlot {
+    const masters = this.getMasterTimetableSlots();
+    const { classId, className } = this.normalizeClassReference(masterSlot.classId, masterSlot.className);
+    const normalizedSlot = { ...masterSlot, classId, className };
+    const existingIndex = masters.findIndex(
+      (m) => m.dayOfWeek === normalizedSlot.dayOfWeek && m.shiftId === normalizedSlot.shiftId
+    );
+    let updated: MasterTimetableSlot;
+    if (existingIndex >= 0) {
+      updated = {
+        ...masters[existingIndex],
+        ...normalizedSlot,
+      };
+      masters[existingIndex] = updated;
+    } else {
+      updated = {
+        ...normalizedSlot,
+        id: normalizedSlot.id || `master_${normalizedSlot.dayOfWeek}_${normalizedSlot.shiftId}`,
+      };
+      masters.push(updated);
+    }
+    this.saveMasterTimetableSlots(masters);
+    return updated;
+  },
+
+  deleteMasterSlot(dayOfWeek: number, shiftId: ShiftId): void {
+    const masters = this.getMasterTimetableSlots();
+    const filtered = masters.filter(
+      (m) => !(m.dayOfWeek === dayOfWeek && m.shiftId === shiftId)
+    );
+    this.saveMasterTimetableSlots(filtered);
+  },
+
+  // Get effective slots for any given week
+  // Automatically populates from Master Schedule for any date without specific override!
+  getEffectiveSlotsForWeek(
+    weekDates: Array<{ dayOfWeek: number; dateStr: string }>
+  ): TimetableSlot[] {
+    const allSpecificSlots = this.getTimetableSlots();
+    const masterSlots = this.getMasterTimetableSlots();
+    const result: TimetableSlot[] = [];
+
+    for (const { dayOfWeek, dateStr } of weekDates) {
+      // Find all shifts in Master
+      for (const master of masterSlots.filter((m) => m.dayOfWeek === dayOfWeek)) {
+        // Check if there is already a specific slot saved for this date & shift
+        const specificSlot = allSpecificSlots.find(
+          (s) => s.date === dateStr && s.shiftId === master.shiftId
+        );
+
+        if (specificSlot) {
+          const { classId, className } = this.normalizeClassReference(specificSlot.classId, specificSlot.className);
+          result.push({ ...specificSlot, classId, className });
+        } else {
+          // Inherit from Master Recurring Schedule!
+          const { classId, className } = this.normalizeClassReference(master.classId, master.className);
+          result.push({
+            id: `recurring_${dateStr}_${master.shiftId}`,
+            date: dateStr,
+            dayOfWeek: master.dayOfWeek,
+            shiftId: master.shiftId,
+            classId,
+            className,
+            teacherName: master.teacherName || "Thầy Thắng (Chủ nhiệm)",
+            assistantId: master.assistantId,
+            assistantName: master.assistantName,
+            room: master.room || "Phòng CLB",
+            lessonTopic: master.lessonTopic || "Bài học theo phân phối chương trình",
+            lessonContent: master.lessonContent || "",
+            progressNote: master.progressNote || "",
+            homework: master.homework || "",
+            homeworkDeadline: master.homeworkDeadline || "",
+            generalNotes: master.generalNotes || "",
+            status: "upcoming",
+            isRecurringMaster: true,
+          });
+        }
+      }
+
+      // Also include any other specific slots that might have been custom-added to this date
+      const customSlotsForDay = allSpecificSlots.filter(
+        (s) =>
+          s.date === dateStr &&
+          !masterSlots.some((m) => m.dayOfWeek === dayOfWeek && m.shiftId === s.shiftId)
+      );
+      for (const cs of customSlotsForDay) {
+        if (!result.some((r) => r.id === cs.id)) {
+          const { classId, className } = this.normalizeClassReference(cs.classId, cs.className);
+          result.push({ ...cs, classId, className });
+        }
+      }
+    }
+
+    return result;
+  },
+
+  getTimetableSlots(): TimetableSlot[] {
+    const raw = localStorage.getItem(STORAGE_KEYS.TIMETABLE_SLOTS);
+    if (!raw) {
+      localStorage.setItem(STORAGE_KEYS.TIMETABLE_SLOTS, JSON.stringify(DEFAULT_TIMETABLE_SLOTS));
+      return DEFAULT_TIMETABLE_SLOTS;
+    }
+    try {
+      const parsed: TimetableSlot[] = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((s) => {
+          const { classId, className } = this.normalizeClassReference(s.classId, s.className);
+          return { ...s, classId, className };
+        });
+      }
+      return DEFAULT_TIMETABLE_SLOTS;
+    } catch {
+      return DEFAULT_TIMETABLE_SLOTS;
+    }
+  },
+
+  saveTimetableSlots(slots: TimetableSlot[]): void {
+    const normalized = slots.map((s) => {
+      const { classId, className } = this.normalizeClassReference(s.classId, s.className);
+      return { ...s, classId, className };
+    });
+    localStorage.setItem(STORAGE_KEYS.TIMETABLE_SLOTS, JSON.stringify(normalized));
+  },
+
+  getTimetableSlotById(id: string): TimetableSlot | undefined {
+    const slots = this.getTimetableSlots();
+    return slots.find((s) => s.id === id);
+  },
+
+  saveTimetableSlot(slot: TimetableSlot, applyToAllWeeks: boolean = true): TimetableSlot {
+    const slots = this.getTimetableSlots();
+    const { classId, className } = this.normalizeClassReference(slot.classId, slot.className);
+    const normalizedSlotInput = { ...slot, classId, className };
+
+    const existingIndex = slots.findIndex(
+      (s) => s.id === normalizedSlotInput.id || (s.date === normalizedSlotInput.date && s.shiftId === normalizedSlotInput.shiftId)
+    );
+    const now = new Date().toISOString();
+
+    let updatedSlot: TimetableSlot;
+    if (existingIndex >= 0) {
+      updatedSlot = {
+        ...slots[existingIndex],
+        ...normalizedSlotInput,
+        id: slots[existingIndex].id.startsWith("recurring_")
+          ? `slot_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
+          : slots[existingIndex].id,
+        isRecurringMaster: false,
+        updatedAt: now,
+      };
+      slots[existingIndex] = updatedSlot;
+    } else {
+      updatedSlot = {
+        ...normalizedSlotInput,
+        id: normalizedSlotInput.id && !normalizedSlotInput.id.startsWith("recurring_")
+          ? normalizedSlotInput.id
+          : `slot_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        isRecurringMaster: false,
+        createdAt: now,
+        updatedAt: now,
+      };
+      slots.push(updatedSlot);
+    }
+
+    this.saveTimetableSlots(slots);
+
+    // If applyToAllWeeks (default: true), automatically update the master recurring schedule
+    // and sync all subsequent weeks!
+    if (applyToAllWeeks !== false) {
+      this.saveMasterSlot({
+        id: `master_${updatedSlot.dayOfWeek}_${updatedSlot.shiftId}`,
+        dayOfWeek: updatedSlot.dayOfWeek,
+        shiftId: updatedSlot.shiftId,
+        classId: updatedSlot.classId,
+        className: updatedSlot.className,
+        teacherName: updatedSlot.teacherName,
+        assistantId: updatedSlot.assistantId,
+        assistantName: updatedSlot.assistantName,
+        room: updatedSlot.room,
+        lessonTopic: updatedSlot.lessonTopic,
+        lessonContent: updatedSlot.lessonContent,
+        progressNote: updatedSlot.progressNote,
+        homework: updatedSlot.homework,
+        homeworkDeadline: updatedSlot.homeworkDeadline,
+        generalNotes: updatedSlot.generalNotes,
+      });
+
+      // Clear obsolete specific overrides in future dates for this shift
+      // so all upcoming weeks automatically and cleanly display the updated class!
+      const allSlotsAfter = this.getTimetableSlots().filter((s) => {
+        if (s.date > updatedSlot.date && s.shiftId === updatedSlot.shiftId && s.dayOfWeek === updatedSlot.dayOfWeek) {
+          return false;
+        }
+        return true;
+      });
+      this.saveTimetableSlots(allSlotsAfter);
+    }
+
+    return updatedSlot;
+  },
+
+  deleteTimetableSlot(
+    id: string,
+    options?: { deleteFromMaster?: boolean; dayOfWeek?: number; shiftId?: ShiftId; date?: string }
+  ): void {
+    const slots = this.getTimetableSlots();
+    const targetSlot = slots.find((s) => s.id === id);
+    const dayOfWeek = options?.dayOfWeek || targetSlot?.dayOfWeek;
+    const shiftId = options?.shiftId || targetSlot?.shiftId;
+    const date = options?.date || targetSlot?.date;
+
+    const filtered = slots.filter((s) => s.id !== id);
+    this.saveTimetableSlots(filtered);
+
+    if (options?.deleteFromMaster !== false && dayOfWeek && shiftId) {
+      this.deleteMasterSlot(dayOfWeek, shiftId);
+      if (date) {
+        const futureCleaned = this.getTimetableSlots().filter(
+          (s) => !(s.date >= date && s.dayOfWeek === dayOfWeek && s.shiftId === shiftId)
+        );
+        this.saveTimetableSlots(futureCleaned);
+      }
+    }
+  },
+
+  setWeekAsMasterTemplate(weekSlots: TimetableSlot[], currentWeekEndDate?: string): void {
+    const newMasters: MasterTimetableSlot[] = weekSlots.map((s) => ({
+      id: `master_${s.dayOfWeek}_${s.shiftId}`,
+      dayOfWeek: s.dayOfWeek,
+      shiftId: s.shiftId,
+      classId: s.classId,
+      className: s.className,
+      teacherName: s.teacherName,
+      assistantId: s.assistantId,
+      assistantName: s.assistantName,
+      room: s.room,
+      lessonTopic: s.lessonTopic,
+      lessonContent: s.lessonContent,
+      progressNote: s.progressNote,
+      homework: s.homework,
+      homeworkDeadline: s.homeworkDeadline,
+      generalNotes: s.generalNotes,
+    }));
+    // Overwrite the entire master recurring template with this week's full layout!
+    this.saveMasterTimetableSlots(newMasters);
+
+    // If currentWeekEndDate provided, clean any specific overrides in future weeks
+    // so all subsequent weeks are 100% synchronized and built from the new Master Schedule!
+    if (currentWeekEndDate) {
+      const allSlots = this.getTimetableSlots();
+      const filteredSlots = allSlots.filter((s) => s.date <= currentWeekEndDate);
+      this.saveTimetableSlots(filteredSlots);
+    }
+  },
+
+  copyWeekSchedule(sourceDates: string[], targetDates: string[]): TimetableSlot[] {
+    if (sourceDates.length !== 7 || targetDates.length !== 7) return [];
+    const allSlots = this.getTimetableSlots();
+    const sourceDateSet = new Set(sourceDates);
+    const sourceSlots = allSlots.filter((s) => sourceDateSet.has(s.date));
+
+    // Remove any existing slots in target week to overwrite cleanly
+    const targetDateSet = new Set(targetDates);
+    const remainingSlots = allSlots.filter((s) => !targetDateSet.has(s.date));
+
+    const newSlots: TimetableSlot[] = sourceSlots.map((s) => {
+      const sourceIndex = sourceDates.indexOf(s.date);
+      const newDate = targetDates[sourceIndex];
+      const now = new Date().toISOString();
+      return {
+        ...s,
+        id: `slot_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        date: newDate,
+        dayOfWeek: sourceIndex + 1,
+        status: "upcoming", // Reset status for future week
+        progressNote: "", // Reset lesson progress note for new week
+        createdAt: now,
+        updatedAt: now,
+      };
+    });
+
+    const finalSlots = [...remainingSlots, ...newSlots];
+    this.saveTimetableSlots(finalSlots);
+    return newSlots;
+  },
+
   // Reset to seed demo data
   resetDemoData(): void {
     localStorage.setItem(STORAGE_KEYS.CLASSES, JSON.stringify(DEFAULT_CLASSES));
@@ -1371,6 +2240,9 @@ export const storageService = {
     localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(DEFAULT_REPORTS));
     localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(DEFAULT_NOTIFICATIONS));
     localStorage.setItem(STORAGE_KEYS.BULLETINS, JSON.stringify(DEFAULT_BULLETINS));
+    localStorage.setItem(STORAGE_KEYS.TIMETABLE_SLOTS, JSON.stringify(DEFAULT_TIMETABLE_SLOTS));
+    localStorage.setItem(STORAGE_KEYS.MASTER_TIMETABLE_SLOTS, JSON.stringify(DEFAULT_MASTER_TIMETABLE_SLOTS));
+    localStorage.setItem(STORAGE_KEYS.TIMETABLE_SETTINGS, JSON.stringify({ shifts: DEFAULT_SHIFT_CONFIGS }));
     localStorage.removeItem(STORAGE_KEYS.STUDENT_ANALYSIS_CACHE);
   },
 
@@ -1386,6 +2258,8 @@ export const storageService = {
     localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify([]));
     localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify([]));
     localStorage.setItem(STORAGE_KEYS.BULLETINS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.TIMETABLE_SLOTS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.MASTER_TIMETABLE_SLOTS, JSON.stringify([]));
     localStorage.removeItem(STORAGE_KEYS.REPORT_DRAFT);
     localStorage.removeItem(STORAGE_KEYS.STUDENT_ANALYSIS_CACHE);
   },

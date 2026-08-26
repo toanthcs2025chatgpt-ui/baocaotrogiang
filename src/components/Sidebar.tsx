@@ -1,6 +1,7 @@
 import React from "react";
 import {
   LayoutDashboard,
+  CalendarDays,
   FilePlus2,
   History,
   Users,
@@ -14,17 +15,7 @@ import {
   LogOut,
   X,
 } from "lucide-react";
-import { User } from "../types";
-
-export type TabType =
-  | "dashboard"
-  | "create_report"
-  | "reports_history"
-  | "students"
-  | "classes"
-  | "assistants"
-  | "statistics"
-  | "settings";
+import { User, TabType } from "../types";
 
 interface SidebarProps {
   activeTab: TabType;
@@ -57,6 +48,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     adminOnly?: boolean;
   }> = [
     { id: "dashboard", label: "Bảng tin tổng hợp", icon: LayoutDashboard, adminOnly: true },
+    { id: "schedule", label: "Thời Khóa Biểu", icon: CalendarDays },
     { id: "create_report", label: "Báo cáo buổi học", icon: FilePlus2 },
     {
       id: "reports_history",

@@ -45,6 +45,9 @@ export const firebaseService = {
       const students = storageService.getStudents();
       const assistants = storageService.getAssistants();
       const reports = storageService.getReports();
+      const masterSlots = storageService.getMasterTimetableSlots();
+      const timetableSlots = storageService.getTimetableSlots();
+      const settings = storageService.getSettings();
 
       // Sync classes
       for (const c of classes) {
@@ -62,10 +65,20 @@ export const firebaseService = {
       for (const r of reports) {
         await setDoc(doc(db, "reports", r.id), r);
       }
+      // Sync master timetable slots
+      for (const m of masterSlots) {
+        await setDoc(doc(db, "master_timetable_slots", m.id), m);
+      }
+      // Sync timetable slots
+      for (const t of timetableSlots) {
+        await setDoc(doc(db, "timetable_slots", t.id), t);
+      }
+      // Sync settings
+      await setDoc(doc(db, "settings", "global_config"), settings);
 
       return {
         success: true,
-        message: `Đã đồng bộ ${classes.length} lớp, ${students.length} học sinh, ${assistants.length} trợ giảng và ${reports.length} báo cáo lên Firestore thành công!`,
+        message: `Đã đồng bộ ${classes.length} lớp, ${students.length} học sinh, ${assistants.length} trợ giảng, ${reports.length} báo cáo và ${masterSlots.length + timetableSlots.length} ca lịch học lên Firestore thành công!`,
       };
     } catch (error: any) {
       console.error("Sync error:", error);
@@ -104,9 +117,25 @@ export const firebaseService = {
         localStorage.setItem("thaythang_reports_v1", JSON.stringify(reports));
       }
 
+      // Pull master timetable slots
+      const masterSnap = await getDocs(collection(db, "master_timetable_slots"));
+      const masterSlots: any[] = [];
+      masterSnap.forEach((doc) => masterSlots.push(doc.data()));
+      if (masterSlots.length > 0) {
+        localStorage.setItem("thaythang_master_timetable_slots_v2", JSON.stringify(masterSlots));
+      }
+
+      // Pull timetable slots
+      const timeSnap = await getDocs(collection(db, "timetable_slots"));
+      const timetableSlots: any[] = [];
+      timeSnap.forEach((doc) => timetableSlots.push(doc.data()));
+      if (timetableSlots.length > 0) {
+        localStorage.setItem("thaythang_timetable_slots_v2", JSON.stringify(timetableSlots));
+      }
+
       return {
         success: true,
-        message: `Đã tải dữ liệu từ Firestore thành công!`,
+        message: `Đã tải toàn bộ dữ liệu từ Firestore thành công!`,
       };
     } catch (error: any) {
       throw new Error(error.message || "Lỗi khi kéo dữ liệu từ Firebase");

@@ -132,11 +132,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
           <div className="pt-3 flex flex-wrap items-center gap-3">
             <button
+              onClick={() => onNavigateTab("schedule")}
+              className="btn-3d-cyan text-xs"
+            >
+              <Calendar className="w-4 h-4" />
+              <span>Thời Khóa Biểu 6 Ca</span>
+            </button>
+            <button
               onClick={() => onNavigateTab("create_report")}
               className="btn-3d-amber text-xs"
             >
               <Plus className="w-4 h-4" />
-              <span>Tạo báo cáo buổi học ngay</span>
+              <span>Tạo báo cáo buổi học</span>
             </button>
             <button
               onClick={() => onNavigateTab("reports_history")}
