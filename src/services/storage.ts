@@ -33,6 +33,9 @@ const STORAGE_KEYS = {
   MASTER_TIMETABLE_SLOTS: "thaythang_master_timetable_slots_v2",
   TIMETABLE_SETTINGS: "thaythang_timetable_settings_v2",
   GDRIVE_SYNC_SNAPSHOT: "thaythang_gdrive_synced_data",
+  LAST_CLOUD_SYNC_VERSION: "thaythang_cloud_sync_version_v1",
+  LAST_CLOUD_SYNC_TIME: "thaythang_cloud_sync_time_v1",
+  DEVICE_ID: "thaythang_device_id_v1",
 };
 
 export const DEFAULT_SHIFT_CONFIGS: ShiftConfig[] = [
@@ -480,6 +483,13 @@ const DEFAULT_SETTINGS: ClubSettings = {
   apiKeyList: [],
   activeApiKeyIndex: 0,
   useFirebase: false,
+  googleDriveConfig: {
+    isConnected: true,
+    email: "thangsinh2444@gmail.com",
+    connectedAt: "2026-08-20",
+    autoSync: true,
+    folderName: "CLB Toán Thầy Thắng - Báo Cáo Buổi Học",
+  },
 };
 
 const DEFAULT_ADMIN_USER: User = {
@@ -1826,8 +1836,172 @@ export const storageService = {
   },
 
   // ==========================================
-  // GOOGLE DRIVE CLOUD SYNC & BACKUP ENGINE
+  // GOOGLE DRIVE & MULTI-DEVICE CLOUD SYNC ENGINE
   // ==========================================
+
+  // Get or create unique persistent device identifier
+  getDeviceId(): string {
+    let devId = localStorage.getItem(STORAGE_KEYS.DEVICE_ID);
+    if (!devId) {
+      devId = `device_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+      localStorage.setItem(STORAGE_KEYS.DEVICE_ID, devId);
+    }
+    return devId;
+  },
+
+  // Get complete Apps Script Code for thangsinh2444@gmail.com
+  getGoogleAppsScriptCode(): string {
+    return `/**
+ * =========================================================================
+ * GOOGLE APPS SCRIPT ĐỒNG BỘ 2 CHIỀU TỰ ĐỘNG - CLB TOÁN THẦY THẮNG
+ * Tài khoản Google Drive: thangsinh2444@gmail.com
+ * Tác giả: Thầy Thắng - Chủ nhiệm CLB Toán
+ * =========================================================================
+ */
+
+var FOLDER_NAME = "CLB Toán Thầy Thắng - Báo Cáo Buổi Học";
+var MASTER_FILENAME = "SaoLuu_CLBToan_Master_Latest.json";
+
+function getOrCreateFolder() {
+  var folders = DriveApp.getFoldersByName(FOLDER_NAME);
+  if (folders.hasNext()) {
+    return folders.next();
+  }
+  return DriveApp.createFolder(FOLDER_NAME);
+}
+
+function doPost(e) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(15000);
+  } catch (lockErr) {
+    return ContentService.createTextOutput(
+      JSON.stringify({ status: "error", error: "Hệ thống đang bận ghi dữ liệu, vui lòng thử lại sau giây lát." })
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  try {
+    var rawPost = e && e.postData && e.postData.contents ? e.postData.contents : "{}";
+    var payload = JSON.parse(rawPost);
+    var action = payload.action || "backup_sync";
+
+    // 1. Kiểm tra kết nối Test
+    if (action === "test_connection") {
+      var testFolder = getOrCreateFolder();
+      lock.releaseLock();
+      return ContentService.createTextOutput(
+        JSON.stringify({
+          status: "success",
+          message: "Kết nối thành công tới Google Drive (thangsinh2444@gmail.com)!",
+          folderName: FOLDER_NAME,
+          folderUrl: testFolder.getUrl(),
+          timestamp: new Date().toLocaleString("vi-VN")
+        })
+      ).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 2. Kéo dữ liệu mới nhất (Pull latest)
+    if (action === "get_latest" || action === "pull") {
+      var folderPull = getOrCreateFolder();
+      var masterFiles = folderPull.getFilesByName(MASTER_FILENAME);
+      var latestFile = null;
+
+      if (masterFiles.hasNext()) {
+        latestFile = masterFiles.next();
+      } else {
+        // Tìm tệp json mới nhất trong folder
+        var allFiles = folderPull.getFiles();
+        var newestTime = 0;
+        while (allFiles.hasNext()) {
+          var f = allFiles.next();
+          if (f.getName().indexOf(".json") !== -1 && f.getLastUpdated().getTime() > newestTime) {
+            newestTime = f.getLastUpdated().getTime();
+            latestFile = f;
+          }
+        }
+      }
+
+      lock.releaseLock();
+
+      if (!latestFile) {
+        return ContentService.createTextOutput(
+          JSON.stringify({ status: "empty", message: "Chưa có bản sao lưu nào trong thư mục Google Drive." })
+        ).setMimeType(ContentService.MimeType.JSON);
+      }
+
+      var fileContent = latestFile.getBlob().getDataAsString();
+      var parsedData = JSON.parse(fileContent);
+      return ContentService.createTextOutput(
+        JSON.stringify({
+          status: "success",
+          fileName: latestFile.getName(),
+          fileId: latestFile.getId(),
+          lastUpdated: latestFile.getLastUpdated().toISOString(),
+          data: parsedData
+        })
+      ).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 3. Sao lưu & Đồng bộ lên Drive (Push / Backup)
+    var folder = getOrCreateFolder();
+    var dataContent = payload.data ? JSON.stringify(payload.data, null, 2) : JSON.stringify(payload, null, 2);
+    
+    // Ghi đè tệp Master mới nhất
+    var existingMasters = folder.getFilesByName(MASTER_FILENAME);
+    var masterFile;
+    if (existingMasters.hasNext()) {
+      masterFile = existingMasters.next();
+      masterFile.setContent(dataContent);
+    } else {
+      masterFile = folder.createFile(MASTER_FILENAME, dataContent, MimeType.PLAIN_TEXT);
+    }
+
+    // Tạo thêm tệp sao lưu theo ngày giờ để lưu lịch sử an toàn
+    var dateStamp = Utilities.formatDate(new Date(), "Asia/Ho_Chi_Minh", "yyyy-MM-dd_HHmm");
+    var historyFilename = "SaoLuu_CLBToan_" + dateStamp + ".json";
+    var historyFile = folder.createFile(historyFilename, dataContent, MimeType.PLAIN_TEXT);
+
+    lock.releaseLock();
+
+    return ContentService.createTextOutput(
+      JSON.stringify({
+        status: "success",
+        message: "Đã lưu bản sao lưu mới lên Google Drive thành công!",
+        masterFileId: masterFile.getId(),
+        historyFileId: historyFile.getId(),
+        folderUrl: folder.getUrl(),
+        timestamp: new Date().toLocaleString("vi-VN")
+      })
+    ).setMimeType(ContentService.MimeType.JSON);
+
+  } catch (err) {
+    lock.releaseLock();
+    return ContentService.createTextOutput(
+      JSON.stringify({ status: "error", error: err.toString() })
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function doGet(e) {
+  try {
+    var folder = getOrCreateFolder();
+    var masterFiles = folder.getFilesByName(MASTER_FILENAME);
+    if (masterFiles.hasNext()) {
+      var f = masterFiles.next();
+      var content = f.getBlob().getDataAsString();
+      return ContentService.createTextOutput(content).setMimeType(ContentService.MimeType.JSON);
+    }
+    return ContentService.createTextOutput(
+      JSON.stringify({ status: "empty", message: "Chưa có dữ liệu." })
+    ).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(
+      JSON.stringify({ status: "error", error: err.toString() })
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+}`;
+  },
+
   syncToGoogleDrive(): {
     success: boolean;
     message: string;
@@ -1887,7 +2061,7 @@ export const storageService = {
         googleDriveConfig: {
           ...(currentSettings.googleDriveConfig || { isConnected: true }),
           isConnected: true,
-          email: currentSettings.googleDriveConfig?.email || "toanthcs2025chatgpt@gmail.com",
+          email: "thangsinh2444@gmail.com",
           lastSyncAt: timestamp,
           lastSyncStatus: "success",
           lastSyncItemCount: totalItems,
@@ -1897,6 +2071,7 @@ export const storageService = {
       };
 
       localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(updatedSettings));
+      localStorage.setItem(STORAGE_KEYS.LAST_CLOUD_SYNC_TIME, now.toISOString());
 
       return {
         success: true,
@@ -1941,6 +2116,79 @@ export const storageService = {
     }
   },
 
+  // Push to Cloud Live: Syncs both to shared server cache and Google Drive
+  async pushToCloudLive(options?: {
+    forceDownload?: boolean;
+    updatedBy?: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    timestamp: string;
+    totalItems: number;
+    filename: string;
+    uploadedToCloud: boolean;
+    cloudUrl?: string;
+    serverVersion?: number;
+  }> {
+    const localRes = this.syncToGoogleDrive();
+    if (!localRes.success) {
+      return { ...localRes, uploadedToCloud: false };
+    }
+
+    const settings = this.getSettings();
+    const webhookUrl = settings.googleDriveConfig?.scriptWebhookUrl?.trim();
+    const payload = this.getBackupPayload();
+    let uploadedToCloud = false;
+    let cloudUrl: string | undefined;
+    let serverVersion: number | undefined;
+
+    try {
+      const pushRes = await fetch("/api/cloud-sync/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: payload,
+          updatedBy: options?.updatedBy || settings.clubName || "Quản trị viên (Thầy Thắng)",
+          account: "thangsinh2444@gmail.com",
+          webhookUrl: webhookUrl || undefined,
+        }),
+      });
+
+      const pushData = await pushRes.json();
+      if (pushData.success) {
+        uploadedToCloud = true;
+        serverVersion = pushData.version;
+        if (pushData.version) {
+          localStorage.setItem(STORAGE_KEYS.LAST_CLOUD_SYNC_VERSION, String(pushData.version));
+        }
+        if (pushData.gdriveDetails?.url || pushData.gdriveDetails?.folderUrl) {
+          cloudUrl = pushData.gdriveDetails.url || pushData.gdriveDetails.folderUrl;
+        }
+      }
+    } catch (err: any) {
+      console.warn("Shared cloud sync push error:", err);
+    }
+
+    if (options?.forceDownload && !uploadedToCloud) {
+      try {
+        this.downloadBackupJSON();
+      } catch (err) {}
+    }
+
+    return {
+      success: true,
+      message: uploadedToCloud
+        ? `Đã đồng bộ tự động ${localRes.totalItems} mục dữ liệu lên Đám mây & Google Drive (thangsinh2444@gmail.com) thành công!`
+        : `Đã lưu an toàn ${localRes.totalItems} mục dữ liệu trên thiết bị!`,
+      timestamp: localRes.timestamp,
+      totalItems: localRes.totalItems,
+      filename: localRes.filename,
+      uploadedToCloud,
+      cloudUrl,
+      serverVersion,
+    };
+  },
+
   async syncToGoogleDriveLive(downloadFile: boolean = false): Promise<{
     success: boolean;
     message: string;
@@ -1950,70 +2198,142 @@ export const storageService = {
     uploadedToCloud: boolean;
     cloudUrl?: string;
   }> {
-    const localRes = this.syncToGoogleDrive();
-    if (!localRes.success) {
-      return { ...localRes, uploadedToCloud: false };
-    }
+    return this.pushToCloudLive({ forceDownload: downloadFile });
+  },
 
+  // Pull from Cloud Live (Pulls latest shared snapshot from cloud server)
+  async pullFromCloudLive(): Promise<{
+    success: boolean;
+    message: string;
+    hasData: boolean;
+    totalItems?: number;
+    counts?: any;
+    updatedAt?: string;
+    updatedBy?: string;
+  }> {
+    try {
+      const res = await fetch("/api/cloud-sync/pull");
+      const json = await res.json();
+
+      if (!json.success || !json.hasData || !json.data) {
+        return {
+          success: false,
+          hasData: false,
+          message: json.message || "Chưa có dữ liệu nào trên đám mây để tải về.",
+        };
+      }
+
+      // Restore data into current machine's localStorage
+      const restoreRes = this.restoreBackupData(json.data);
+      if (restoreRes.success) {
+        if (json.version) {
+          localStorage.setItem(STORAGE_KEYS.LAST_CLOUD_SYNC_VERSION, String(json.version));
+        }
+        if (json.updatedAt) {
+          localStorage.setItem(STORAGE_KEYS.LAST_CLOUD_SYNC_TIME, json.updatedAt);
+        }
+      }
+
+      return {
+        success: restoreRes.success,
+        hasData: true,
+        message: restoreRes.message,
+        totalItems: json.totalItems,
+        counts: restoreRes.count,
+        updatedAt: json.updatedAt,
+        updatedBy: json.updatedBy,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        hasData: false,
+        message: `Lỗi kết nối tải dữ liệu đám mây: ${err.message}`,
+      };
+    }
+  },
+
+  // Pull directly from Google Drive Webhook
+  async pullFromGoogleDriveLive(): Promise<{
+    success: boolean;
+    message: string;
+    totalItems?: number;
+    counts?: any;
+  }> {
     const settings = this.getSettings();
     const webhookUrl = settings.googleDriveConfig?.scriptWebhookUrl?.trim();
-    let uploadedToCloud = false;
-    let cloudUrl: string | undefined;
+    if (!webhookUrl || !webhookUrl.startsWith("http")) {
+      return {
+        success: false,
+        message: "Vui lòng nhập đường dẫn Google Apps Script Webhook trong Cài đặt trước.",
+      };
+    }
 
-    if (webhookUrl && (webhookUrl.startsWith("http://") || webhookUrl.startsWith("https://"))) {
-      try {
-        const payload = this.getBackupPayload();
-        const serverRes = await fetch("/api/gdrive/sync", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            webhookUrl,
-            payload: {
-              action: "backup_sync",
-              timestamp: localRes.timestamp,
-              filename: localRes.filename,
-              stats: localRes.stats,
-              data: payload,
-            },
-          }),
-        });
+    try {
+      const res = await fetch("/api/gdrive/pull", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ webhookUrl }),
+      });
+      const json = await res.json();
 
-        const data = await serverRes.json();
-        if (data.success) {
-          uploadedToCloud = true;
-          cloudUrl = data.url;
-        } else if (data.needsAuthAccess) {
+      if (!json.success || !json.data) {
+        return {
+          success: false,
+          message: json.error || "Không tìm thấy dữ liệu từ Google Drive.",
+        };
+      }
+
+      const restoreRes = this.restoreBackupData(json.data);
+      return {
+        success: restoreRes.success,
+        message: `Đã tải về thành công từ Google Drive (${json.fileName || "Tệp sao lưu mới nhất"}): ${restoreRes.message}`,
+        totalItems: json.totalItems,
+        counts: restoreRes.count,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: `Lỗi tải từ Google Drive: ${err.message}`,
+      };
+    }
+  },
+
+  // Auto-sync on startup across devices
+  async autoSyncOnStartup(): Promise<{
+    synced: boolean;
+    message?: string;
+    totalItems?: number;
+  }> {
+    try {
+      // 1. Check version on cloud
+      const res = await fetch("/api/cloud-sync/version");
+      const meta = await res.json();
+
+      if (!meta.success || !meta.hasData) {
+        // If cloud is empty, seed cloud with local data so other devices can pull immediately
+        this.pushToCloudLive({ updatedBy: "Khởi tạo thiết bị đầu tiên" }).catch(() => {});
+        return { synced: false };
+      }
+
+      const localVersionStr = localStorage.getItem(STORAGE_KEYS.LAST_CLOUD_SYNC_VERSION);
+      const localVersion = localVersionStr ? parseInt(localVersionStr, 10) : 0;
+      const localReports = this.getReports();
+
+      // If local has never synced, or local is empty, or cloud has newer version:
+      if (!localVersionStr || localVersion < meta.version || localReports.length === 0) {
+        const pullRes = await this.pullFromCloudLive();
+        if (pullRes.success) {
           return {
-            success: false,
-            message: data.error,
-            timestamp: localRes.timestamp,
-            totalItems: localRes.totalItems,
-            filename: localRes.filename,
-            uploadedToCloud: false,
+            synced: true,
+            message: `Đã tự động cập nhật dữ liệu mới nhất từ Đám mây (Cập nhật bởi ${meta.updatedBy || "Google Drive"})`,
+            totalItems: pullRes.totalItems,
           };
         }
-      } catch (err: any) {
-        console.warn("Backend Google Drive Webhook Sync Warning:", err);
       }
+      return { synced: false };
+    } catch (e) {
+      return { synced: false };
     }
-
-    if (downloadFile && !uploadedToCloud) {
-      try {
-        this.downloadBackupJSON();
-      } catch (err) {}
-    }
-
-    return {
-      success: true,
-      message: uploadedToCloud
-        ? `Đã tải và lưu tự động ${localRes.totalItems} mục dữ liệu trực tiếp vào thư mục Google Drive thành công!`
-        : `Đã lưu an toàn ${localRes.totalItems} mục dữ liệu và chuẩn bị tệp sao lưu!`,
-      timestamp: localRes.timestamp,
-      totalItems: localRes.totalItems,
-      filename: localRes.filename,
-      uploadedToCloud,
-      cloudUrl,
-    };
   },
 
   getGoogleDriveSnapshot(): any | null {
@@ -2037,20 +2357,22 @@ export const storageService = {
     return this.restoreBackupData(snapshot);
   },
 
+  // Debounced auto sync
   triggerAutoSync(): void {
     const settings = this.getSettings();
-    if (settings.googleDriveConfig?.isConnected && settings.googleDriveConfig?.autoSync) {
-      try {
-        this.syncToGoogleDrive();
-        if (settings.googleDriveConfig?.scriptWebhookUrl) {
-          // Fire and forget cloud webhook upload in background
-          this.syncToGoogleDriveLive(false).catch((e) =>
-            console.warn("Auto background cloud upload error:", e)
-          );
-        }
-      } catch (e) {
-        console.warn("Auto-sync to Google Drive error:", e);
+    if (settings.googleDriveConfig?.isConnected && settings.googleDriveConfig?.autoSync !== false) {
+      if ((window as any).__autoSyncDebounceTimeout) {
+        clearTimeout((window as any).__autoSyncDebounceTimeout);
       }
+      (window as any).__autoSyncDebounceTimeout = setTimeout(() => {
+        try {
+          this.pushToCloudLive().catch((e) =>
+            console.warn("Auto background cloud sync error:", e)
+          );
+        } catch (e) {
+          console.warn("Auto-sync to Google Drive error:", e);
+        }
+      }, 1200);
     }
   },
 

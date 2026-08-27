@@ -375,7 +375,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setDriveSyncing(true);
     setDriveMessage(null);
     try {
-      const res = await storageService.syncToGoogleDriveLive(true);
+      const res = await storageService.pushToCloudLive({ updatedBy: settings.clubName || "Thầy Thắng" });
       setDriveSyncing(false);
       if (res.success) {
         setDriveMessage(`✓ ${res.message}`);
@@ -391,6 +391,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     } catch (err: any) {
       setDriveSyncing(false);
       setDriveMessage(`⚠️ Lỗi: ${err.message || "Không thể đồng bộ"}`);
+    }
+  };
+
+  const handlePullFromCloud = async () => {
+    if (!window.confirm("Bạn có muốn tải và cập nhật phiên bản mới nhất từ Đám mây / Google Drive về thiết bị này không? Dữ liệu trên máy này sẽ được cập nhật đồng bộ.")) {
+      return;
+    }
+    setDriveSyncing(true);
+    setDriveMessage(null);
+    try {
+      const res = await storageService.pullFromCloudLive();
+      setDriveSyncing(false);
+      if (res.success) {
+        setDriveMessage(`✓ Đồng bộ thành công: ${res.message}`);
+        setSettings(storageService.getSettings());
+        setTimeout(() => {
+          window.location.reload();
+        }, 1200);
+      } else {
+        setDriveMessage(`⚠️ ${res.message}`);
+      }
+    } catch (err: any) {
+      setDriveSyncing(false);
+      setDriveMessage(`⚠️ Lỗi: ${err.message || "Không thể tải dữ liệu"}`);
     }
   };
 
@@ -436,22 +460,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleCopyAppsScript = () => {
-    const scriptCode = `// --- MÃ GOOGLE APPS SCRIPT ĐỒNG BỘ CLB TOÁN THẦY THẮNG ---
-function doPost(e) {
-  try {
-    var contents = e.postData.contents;
-    var payload = JSON.parse(contents);
-    var folderName = "CLB Toán Thầy Thắng - Báo Cáo Buổi Học";
-    var folders = DriveApp.getFoldersByName(folderName);
-    var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
-    var dateStr = Utilities.formatDate(new Date(), "GMT+7", "yyyy-MM-dd_HHmm");
-    var fileName = "SaoLuu_CLBToan_" + dateStr + ".json";
-    var file = folder.createFile(fileName, contents, MimeType.PLAIN_TEXT);
-    return ContentService.createTextOutput(JSON.stringify({ status: "success", fileId: file.getId(), url: file.getUrl() })).setMimeType(ContentService.MimeType.JSON);
-  } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({ status: "error", error: err.toString() })).setMimeType(ContentService.MimeType.JSON);
-  }
-}`;
+    const scriptCode = storageService.getGoogleAppsScriptCode();
     navigator.clipboard.writeText(scriptCode);
     setCopiedScript(true);
     setTimeout(() => setCopiedScript(false), 3000);
@@ -810,7 +819,7 @@ function doPost(e) {
               type="email"
               value={driveEmail}
               onChange={(e) => setDriveEmail(e.target.value)}
-              placeholder="toanthcs2025chatgpt@gmail.com"
+              placeholder="thangsinh2444@gmail.com"
               className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold text-slate-800 focus:outline-none focus:border-blue-600"
             />
           </div>
@@ -860,7 +869,7 @@ function doPost(e) {
               <div className="space-y-1">
                 <div className="font-black text-slate-800 flex items-center gap-1.5">
                   <FolderCheck className="w-4 h-4 text-blue-600" />
-                  <span>Trạng thái kết nối: <strong className="text-emerald-700">Đang hoạt động & Sẵn sàng đồng bộ</strong></span>
+                  <span>Trạng thái kết nối: <strong className="text-emerald-700">Tự động đồng bộ đa thiết bị (Máy tính, Điện thoại, Máy khác)</strong></span>
                 </div>
                 <div className="text-[11px] text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-1">
                   <span>Thư mục Drive: <code>/CLB Toán Thầy Thắng - Báo Cáo Buổi Học/</code></span>
@@ -909,13 +918,25 @@ function doPost(e) {
                 onClick={() => handleSyncGoogleDrive(false)}
                 disabled={driveSyncing}
                 className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black flex items-center gap-1.5 transition-all border border-blue-700 shadow-sm cursor-pointer"
+                title="Đẩy toàn bộ dữ liệu hiện tại lên đám mây và Google Drive"
               >
                 {driveSyncing ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
                   <RefreshCw className="w-3.5 h-3.5" />
                 )}
-                <span>Đồng bộ & Tải file lên Drive ngay</span>
+                <span>Đồng bộ lên Đám mây & Drive ngay</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handlePullFromCloud}
+                disabled={driveSyncing}
+                className="px-4 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-950 text-xs font-black flex items-center gap-1.5 transition-colors border border-emerald-300 cursor-pointer"
+                title="Tải và đồng bộ dữ liệu mới nhất từ máy khác / Drive về máy này"
+              >
+                <Cloud className="w-3.5 h-3.5 text-emerald-700" />
+                <span>Kéo dữ liệu từ Đám mây về máy này</span>
               </button>
 
               <button
@@ -925,7 +946,7 @@ function doPost(e) {
                 className="px-4 py-2.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-950 text-xs font-black flex items-center gap-1.5 transition-colors border border-sky-300 cursor-pointer"
               >
                 <ExternalLink className="w-3.5 h-3.5 text-sky-700" />
-                <span>Đồng bộ + Mở Google Drive</span>
+                <span>Mở Google Drive</span>
               </button>
 
               <button
@@ -934,7 +955,7 @@ function doPost(e) {
                 className="px-4 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-950 text-xs font-black flex items-center gap-1.5 transition-colors border border-amber-300 cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
-                <span>Khôi phục từ bản Drive</span>
+                <span>Khôi phục bản lưu trước</span>
               </button>
 
               <button
@@ -950,7 +971,7 @@ function doPost(e) {
                 className="px-4 py-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-800 text-xs font-bold flex items-center gap-1.5 transition-colors border border-slate-300 cursor-pointer"
               >
                 <FileDown className="w-3.5 h-3.5 text-blue-700" />
-                <span>Tải file dữ liệu (.json)</span>
+                <span>Tải file JSON dự phòng</span>
               </button>
             </div>
 

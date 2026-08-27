@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
@@ -8,6 +9,41 @@ dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// In-memory + file-backed shared storage for cross-device sync
+const DATA_DIR = path.join(process.cwd(), "data");
+const SHARED_STORE_FILE = path.join(DATA_DIR, "shared_cloud_store.json");
+
+let sharedCloudStore: {
+  version: number;
+  updatedAt: string;
+  updatedBy: string;
+  account: string;
+  totalItems: number;
+  data: any;
+} = {
+  version: 1,
+  updatedAt: new Date().toISOString(),
+  updatedBy: "Hệ thống CLB Toán Thầy Thắng",
+  account: "thangsinh2444@gmail.com",
+  totalItems: 0,
+  data: null,
+};
+
+// Try loading existing stored snapshot on server start
+try {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+  if (fs.existsSync(SHARED_STORE_FILE)) {
+    const raw = fs.readFileSync(SHARED_STORE_FILE, "utf-8");
+    if (raw) {
+      sharedCloudStore = JSON.parse(raw);
+    }
+  }
+} catch (e) {
+  console.warn("Could not read shared_cloud_store.json:", e);
+}
 
 async function startServer() {
   const app = express();
@@ -592,6 +628,230 @@ Thầy Thắng và đội ngũ trợ giảng sẽ tiếp tục bám sát từng 
       res.status(500).json({
         success: false,
         error: error.message || "Lỗi khi tổng hợp bản tin học vụ.",
+      });
+    }
+  });
+
+  // ==========================================
+  // SHARED MULTI-DEVICE CLOUD SYNC ENDPOINTS
+  // ==========================================
+  
+  // 1. Get current cloud version and metadata (for fast polling)
+  app.get("/api/cloud-sync/version", (req, res) => {
+    res.json({
+      success: true,
+      version: sharedCloudStore.version,
+      updatedAt: sharedCloudStore.updatedAt,
+      updatedBy: sharedCloudStore.updatedBy,
+      account: sharedCloudStore.account || "thangsinh2444@gmail.com",
+      totalItems: sharedCloudStore.totalItems,
+      hasData: Boolean(sharedCloudStore.data),
+    });
+  });
+
+  // 2. Pull full cloud snapshot to synchronize to a new machine/device
+  app.get("/api/cloud-sync/pull", (req, res) => {
+    if (!sharedCloudStore.data) {
+      return res.json({
+        success: true,
+        hasData: false,
+        version: sharedCloudStore.version,
+        message: "Chưa có dữ liệu nào được đẩy lên đám mây.",
+      });
+    }
+
+    res.json({
+      success: true,
+      hasData: true,
+      version: sharedCloudStore.version,
+      updatedAt: sharedCloudStore.updatedAt,
+      updatedBy: sharedCloudStore.updatedBy,
+      account: sharedCloudStore.account || "thangsinh2444@gmail.com",
+      totalItems: sharedCloudStore.totalItems,
+      data: sharedCloudStore.data,
+    });
+  });
+
+  // 3. Push full snapshot to shared cloud (and optionally forward to Google Drive)
+  app.post("/api/cloud-sync/push", async (req, res) => {
+    try {
+      const { data, updatedBy, account, webhookUrl } = req.body;
+      if (!data) {
+        return res.status(400).json({
+          success: false,
+          error: "Dữ liệu snapshot không hợp lệ.",
+        });
+      }
+
+      const totalItems =
+        (data.reports?.length || 0) +
+        (data.students?.length || 0) +
+        (data.classes?.length || 0) +
+        (data.assistants?.length || 0) +
+        (data.timetableSlots?.length || 0) +
+        (data.masterTimetableSlots?.length || 0);
+
+      const nowIso = new Date().toISOString();
+      sharedCloudStore = {
+        version: (sharedCloudStore.version || 0) + 1,
+        updatedAt: nowIso,
+        updatedBy: updatedBy || "Quản trị viên",
+        account: account || "thangsinh2444@gmail.com",
+        totalItems,
+        data,
+      };
+
+      // Persist to local disk cache
+      try {
+        if (!fs.existsSync(DATA_DIR)) {
+          fs.mkdirSync(DATA_DIR, { recursive: true });
+        }
+        fs.writeFileSync(SHARED_STORE_FILE, JSON.stringify(sharedCloudStore, null, 2), "utf-8");
+      } catch (err) {
+        console.warn("Could not write to shared_cloud_store.json:", err);
+      }
+
+      // If webhookUrl is provided, forward to Google Drive in background
+      let gdriveResult: any = null;
+      if (webhookUrl && typeof webhookUrl === "string" && webhookUrl.startsWith("http")) {
+        try {
+          const nowStr = new Date().toLocaleString("vi-VN");
+          const dateStr = nowIso.split("T")[0];
+          const gdriveResponse = await fetch(webhookUrl.trim(), {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({
+              action: "backup_sync",
+              timestamp: nowStr,
+              filename: `CLB_Toan_Thay_Thang_GoogleDrive_${dateStr}.json`,
+              account: account || "thangsinh2444@gmail.com",
+              data,
+            }),
+            redirect: "follow",
+          });
+          const text = await gdriveResponse.text();
+          try {
+            gdriveResult = JSON.parse(text);
+          } catch (e) {
+            gdriveResult = { raw: text.slice(0, 150) };
+          }
+        } catch (gErr: any) {
+          console.warn("Auto Google Drive relay warning:", gErr.message);
+        }
+      }
+
+      return res.json({
+        success: true,
+        message: `Đã lưu và đồng bộ thành công ${totalItems} mục lên hệ thống Đám mây đa thiết bị!`,
+        version: sharedCloudStore.version,
+        updatedAt: sharedCloudStore.updatedAt,
+        totalItems,
+        gdriveRelayed: Boolean(gdriveResult && gdriveResult.status !== "error"),
+        gdriveDetails: gdriveResult,
+      });
+    } catch (err: any) {
+      console.error("Cloud sync push error:", err);
+      return res.status(500).json({
+        success: false,
+        error: `Lỗi đồng bộ đám mây: ${err.message}`,
+      });
+    }
+  });
+
+  // 4. Pull directly from Google Drive Webhook
+  app.post("/api/gdrive/pull", async (req, res) => {
+    try {
+      const { webhookUrl } = req.body;
+      if (!webhookUrl || typeof webhookUrl !== "string" || !webhookUrl.startsWith("http")) {
+        return res.status(400).json({
+          success: false,
+          error: "Vui lòng cấu hình Webhook URL trong cài đặt.",
+        });
+      }
+
+      // Try POST with action: "get_latest"
+      const response = await fetch(webhookUrl.trim(), {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "get_latest" }),
+        redirect: "follow",
+      });
+
+      const responseText = await response.text();
+
+      if (
+        responseText.includes("<html") &&
+        (responseText.includes("accounts.google.com") || responseText.includes("Sign in - Google Accounts"))
+      ) {
+        return res.json({
+          success: false,
+          needsAuthAccess: true,
+          error: "Google Apps Script yêu cầu cấp quyền 'Bất kỳ ai (Anyone)' khi Deploy.",
+        });
+      }
+
+      let parsed: any = null;
+      try {
+        parsed = JSON.parse(responseText);
+      } catch (e) {
+        return res.json({
+          success: false,
+          error: "Không thể phân tích phản hồi từ Google Drive (không phải JSON).",
+        });
+      }
+
+      if (parsed.status === "error") {
+        return res.json({
+          success: false,
+          error: `Google Apps Script báo lỗi: ${parsed.error}`,
+        });
+      }
+
+      // The returned data can be in parsed.data or parsed
+      const snapshotData = parsed.data || (parsed.reports ? parsed : null);
+
+      if (!snapshotData) {
+        return res.json({
+          success: false,
+          error: "Chưa tìm thấy tệp sao lưu nào trong thư mục Google Drive.",
+        });
+      }
+
+      // Update shared server store with this pulled version
+      const totalItems =
+        (snapshotData.reports?.length || 0) +
+        (snapshotData.students?.length || 0) +
+        (snapshotData.classes?.length || 0) +
+        (snapshotData.assistants?.length || 0) +
+        (snapshotData.timetableSlots?.length || 0) +
+        (snapshotData.masterTimetableSlots?.length || 0);
+
+      sharedCloudStore = {
+        version: (sharedCloudStore.version || 0) + 1,
+        updatedAt: new Date().toISOString(),
+        updatedBy: "Google Drive (thangsinh2444@gmail.com)",
+        account: "thangsinh2444@gmail.com",
+        totalItems,
+        data: snapshotData,
+      };
+
+      try {
+        fs.writeFileSync(SHARED_STORE_FILE, JSON.stringify(sharedCloudStore, null, 2), "utf-8");
+      } catch (e) {}
+
+      return res.json({
+        success: true,
+        message: `Đã tải thành công ${totalItems} mục từ Google Drive!`,
+        totalItems,
+        data: snapshotData,
+        fileId: parsed.fileId,
+        fileName: parsed.fileName,
+      });
+    } catch (err: any) {
+      console.error("GDrive pull error:", err);
+      return res.status(500).json({
+        success: false,
+        error: `Lỗi kết nối Webhook tải dữ liệu: ${err.message}`,
       });
     }
   });

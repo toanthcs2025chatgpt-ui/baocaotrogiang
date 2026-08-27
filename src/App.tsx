@@ -38,6 +38,23 @@ export function App() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [syncToastMsg, setSyncToastMsg] = useState<string | null>(null);
+  const [dataVersion, setDataVersion] = useState(0);
+
+  // Auto-sync on startup across devices (Google Drive & Cloud Store)
+  useEffect(() => {
+    let isMounted = true;
+    storageService.autoSyncOnStartup().then((res) => {
+      if (isMounted && res.synced) {
+        setSyncToastMsg(res.message || "Đã tự động đồng bộ dữ liệu mới nhất!");
+        setDataVersion((v) => v + 1);
+        setTimeout(() => setSyncToastMsg(null), 4500);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Role constraint enforcement: Assistants can access create_report, reports_history, and schedule
   useEffect(() => {
@@ -187,8 +204,25 @@ export function App() {
         />
 
         {/* Dynamic Main Content Area */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-slate-100">
+        <main key={`data_v_${dataVersion}`} className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-slate-100">
           <div className="max-w-7xl mx-auto">
+            {/* Auto Cloud & Drive Sync Success Banner */}
+            {syncToastMsg && (
+              <div className="mb-4 p-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-bold flex items-center justify-between shadow-lg animate-in fade-in slide-in-from-top-3 duration-300">
+                <div className="flex items-center gap-2">
+                  <span className="p-1 rounded-lg bg-white/20">☁️</span>
+                  <span>{syncToastMsg}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSyncToastMsg(null)}
+                  className="px-2 py-0.5 rounded-lg bg-black/20 hover:bg-black/40 text-[11px] font-bold cursor-pointer"
+                >
+                  Đóng
+                </button>
+              </div>
+            )}
+
             {/* Assistant restriction notice if on assistant role */}
             {!isAdmin && (
               <div className="mb-5 p-3.5 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 text-blue-950 text-xs font-bold flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-xs">
