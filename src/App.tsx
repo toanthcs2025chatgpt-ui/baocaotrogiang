@@ -288,6 +288,7 @@ export function App() {
                 currentUser={currentUser}
                 onResetDemo={handleResetDemo}
                 onWipeData={handleWipeData}
+                onUserUpdate={handleUserChange}
               />
             )}
           </div>

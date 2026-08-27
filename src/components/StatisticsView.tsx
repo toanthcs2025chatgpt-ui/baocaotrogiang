@@ -12,11 +12,15 @@ import {
   CheckCircle2,
   TrendingUp,
   Award,
+  Wallet,
+  CalendarCheck,
+  Coins,
 } from "lucide-react";
 import { Report, Student, ClassItem } from "../types";
 import { storageService } from "../services/storage";
 import { exportUtils } from "../utils/exportUtils";
 import { AttendanceReportSection } from "./AttendanceReportSection";
+import { AssistantPayrollSection } from "./AssistantPayrollSection";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -90,6 +94,9 @@ export const StatisticsView: React.FC = () => {
   const reports = storageService.getReports();
   const classes = storageService.getClasses();
   const students = storageService.getStudents();
+
+  // Active Sub-Tab in Statistics: "learning" | "tuition" | "payroll"
+  const [activeSubTab, setActiveSubTab] = useState<"learning" | "tuition" | "payroll">("learning");
 
   // Filters
   const [selectedClass, setSelectedClass] = useState("all");
@@ -253,262 +260,332 @@ export const StatisticsView: React.FC = () => {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
-      {/* Header */}
-      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="p-2 rounded-xl bg-purple-100 text-purple-900">
-              <BarChart3 className="w-5 h-5" />
+      {/* SECTION TABS SWITCHER */}
+      <div className="bg-white rounded-3xl p-2.5 sm:p-3 border-2 border-slate-300 shadow-sm flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+          {/* Sub-tab 1: Học tập & Đánh giá */}
+          <button
+            type="button"
+            onClick={() => setActiveSubTab("learning")}
+            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl font-black text-xs sm:text-sm transition-all cursor-pointer ${
+              activeSubTab === "learning"
+                ? "bg-purple-800 text-white shadow-md border border-purple-900"
+                : "bg-slate-100 text-slate-700 hover:bg-purple-100 hover:text-purple-900 border border-slate-200"
+            }`}
+          >
+            <BarChart3 className="w-4 h-4" />
+            <span>Thống Kê Học Tập & Chuyên Cần</span>
+          </button>
+
+          {/* Sub-tab 2: Điểm danh & Học phí */}
+          <button
+            type="button"
+            onClick={() => setActiveSubTab("tuition")}
+            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl font-black text-xs sm:text-sm transition-all cursor-pointer ${
+              activeSubTab === "tuition"
+                ? "bg-blue-800 text-white shadow-md border border-blue-900"
+                : "bg-slate-100 text-slate-700 hover:bg-blue-100 hover:text-blue-900 border border-slate-200"
+            }`}
+          >
+            <CalendarCheck className="w-4 h-4" />
+            <span>Điểm Danh & Học Phí Học Sinh</span>
+          </button>
+
+          {/* Sub-tab 3: Bảng Lương Trợ Giảng */}
+          <button
+            type="button"
+            onClick={() => setActiveSubTab("payroll")}
+            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl font-black text-xs sm:text-sm transition-all cursor-pointer ${
+              activeSubTab === "payroll"
+                ? "bg-emerald-800 text-white shadow-md border border-emerald-900"
+                : "bg-slate-100 text-slate-700 hover:bg-emerald-100 hover:text-emerald-900 border border-slate-200"
+            }`}
+          >
+            <Wallet className="w-4 h-4 text-emerald-400" />
+            <span>Bảng Lương Trợ Giảng</span>
+            <span className="px-2 py-0.5 rounded-xl bg-amber-400 text-slate-950 text-[10px] font-black uppercase tracking-wider">
+              Mới
             </span>
-            <h2 className="text-xl font-bold text-slate-800">Thống Kê & Báo Cáo Tổng Hợp</h2>
+          </button>
+        </div>
+
+        <div className="text-xs text-slate-500 font-bold px-2 hidden lg:block">
+          CLB Toán Thầy Thắng • Hệ thống Báo cáo & Tài chính
+        </div>
+      </div>
+
+      {/* VIEW CONTENT 1: LEARNING & STUDENT EVALUATION LOG */}
+      {activeSubTab === "learning" && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Header */}
+          <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-purple-100 text-purple-900">
+                  <BarChart3 className="w-5 h-5" />
+                </span>
+                <h2 className="text-xl font-bold text-slate-800">Thống Kê & Báo Cáo Học Tập</h2>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Báo cáo đa chiều theo ngày, tuần, tháng, lớp học và học sinh.
+              </p>
+            </div>
+
+            {/* Export Buttons */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={handleExportExcel}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#1A472A] text-xs font-bold transition-colors border border-emerald-200 cursor-pointer"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>Xuất Excel</span>
+              </button>
+
+              <button
+                onClick={handleExportCSV}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors border border-slate-200 cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Xuất CSV</span>
+              </button>
+
+              <button
+                onClick={handleExportPDF}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-800 text-xs font-bold transition-colors border border-rose-200 cursor-pointer"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Xuất PDF</span>
+              </button>
+            </div>
           </div>
-          <p className="text-xs text-slate-500 mt-1">
-            Báo cáo đa chiều theo ngày, tuần, tháng, lớp học và học sinh.
-          </p>
-        </div>
 
-        {/* Export Buttons */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={handleExportExcel}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#1A472A] text-xs font-bold transition-colors border border-emerald-200"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5" />
-            <span>Xuất Excel</span>
-          </button>
+          {/* Filter Bar */}
+          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+            <div>
+              <label className="font-semibold text-slate-600 block mb-1 flex items-center gap-1.5">
+                <School className="w-3.5 h-3.5 text-slate-400" />
+                Lớp học:
+              </label>
+              <select
+                value={selectedClass}
+                onChange={(e) => setSelectedClass(e.target.value)}
+                className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none"
+              >
+                <option value="all">Tất cả lớp học</option>
+                {classes.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          <button
-            onClick={handleExportCSV}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors border border-slate-200"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Xuất CSV</span>
-          </button>
+            <div>
+              <label className="font-semibold text-slate-600 block mb-1 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-blue-500" />
+                Chọn Tháng:
+              </label>
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none font-medium text-slate-800"
+              >
+                <option value="all">Tất cả các tháng</option>
+                {availableMonths.map((m) => {
+                  const [year, month] = m.split("-");
+                  return (
+                    <option key={m} value={m}>
+                      Tháng {month}/{year}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
 
-          <button
-            onClick={handleExportPDF}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-800 text-xs font-bold transition-colors border border-rose-200"
-          >
-            <FileText className="w-3.5 h-3.5" />
-            <span>Xuất PDF</span>
-          </button>
-        </div>
-      </div>
+            <div>
+              <label className="font-semibold text-slate-600 block mb-1 flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-slate-400" />
+                Học sinh cụ thể:
+              </label>
+              <select
+                value={selectedStudent}
+                onChange={(e) => setSelectedStudent(e.target.value)}
+                className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none"
+              >
+                <option value="all">Tất cả học sinh</option>
+                {students.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} ({s.className})
+                  </option>
+                ))}
+              </select>
+            </div>
 
-      {/* Filter Bar */}
-      <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-        <div>
-          <label className="font-semibold text-slate-600 block mb-1 flex items-center gap-1.5">
-            <School className="w-3.5 h-3.5 text-slate-400" />
-            Lớp học:
-          </label>
-          <select
-            value={selectedClass}
-            onChange={(e) => setSelectedClass(e.target.value)}
-            className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none"
-          >
-            <option value="all">Tất cả lớp học</option>
-            {classes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
+            <div className="flex flex-col justify-end">
+              <button
+                onClick={() => {
+                  setSelectedClass("all");
+                  setSelectedMonth("all");
+                  setSelectedStudent("all");
+                }}
+                className="w-full p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition-colors cursor-pointer"
+              >
+                Đặt lại bộ lọc
+              </button>
+            </div>
+          </div>
 
-        <div>
-          <label className="font-semibold text-slate-600 block mb-1 flex items-center gap-1.5">
-            <Calendar className="w-3.5 h-3.5 text-blue-500" />
-            Chọn Tháng:
-          </label>
-          <select
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-            className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none font-medium text-slate-800"
-          >
-            <option value="all">Tất cả các tháng</option>
-            {availableMonths.map((m) => {
-              const [year, month] = m.split("-");
-              return (
-                <option key={m} value={m}>
-                  Tháng {month}/{year}
-                </option>
-              );
-            })}
-          </select>
-        </div>
+          {/* Aggregate KPI Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-1">
+              <span className="text-xs text-slate-500 font-medium">Tỷ lệ Chuyên cần</span>
+              <div className="text-2xl font-black text-emerald-800">{attendanceRate}%</div>
+              <p className="text-[11px] text-slate-400">{presentCount}/{totalRecords} lượt có mặt</p>
+            </div>
 
-        <div>
-          <label className="font-semibold text-slate-600 block mb-1 flex items-center gap-1.5">
-            <User className="w-3.5 h-3.5 text-slate-400" />
-            Học sinh cụ thể:
-          </label>
-          <select
-            value={selectedStudent}
-            onChange={(e) => setSelectedStudent(e.target.value)}
-            className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none"
-          >
-            <option value="all">Tất cả học sinh</option>
-            {students.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} ({s.className})
-              </option>
-            ))}
-          </select>
-        </div>
+            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-1">
+              <span className="text-xs text-slate-500 font-medium">Tỷ lệ Hoàn thành BTVN</span>
+              <div className="text-2xl font-black text-amber-900">{homeworkRate}%</div>
+              <p className="text-[11px] text-slate-400">{goodHwCount}/{totalRecords} bài đạt</p>
+            </div>
 
-        <div className="flex flex-col justify-end">
-          <button
-            onClick={() => {
-              setSelectedClass("all");
-              setSelectedMonth("all");
-              setSelectedStudent("all");
-            }}
-            className="w-full p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition-colors"
-          >
-            Đặt lại bộ lọc
-          </button>
-        </div>
-      </div>
+            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-1">
+              <span className="text-xs text-slate-500 font-medium">Tỷ lệ Tiếp thu Khá/Giỏi</span>
+              <div className="text-2xl font-black text-blue-900">{compRate}%</div>
+              <p className="text-[11px] text-slate-400">{goodCompCount}/{totalRecords} lượt đánh giá</p>
+            </div>
 
-      {/* Aggregate KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-1">
-          <span className="text-xs text-slate-500 font-medium">Tỷ lệ Chuyên cần</span>
-          <div className="text-2xl font-black text-emerald-800">{attendanceRate}%</div>
-          <p className="text-[11px] text-slate-400">{presentCount}/{totalRecords} lượt có mặt</p>
-        </div>
+            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-1">
+              <span className="text-xs text-slate-500 font-medium">Thái độ Tích cực</span>
+              <div className="text-2xl font-black text-purple-900">{attitudeRate}%</div>
+              <p className="text-[11px] text-slate-400">{activeAttCount}/{totalRecords} hăng hái</p>
+            </div>
+          </div>
 
-        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-1">
-          <span className="text-xs text-slate-500 font-medium">Tỷ lệ Hoàn thành BTVN</span>
-          <div className="text-2xl font-black text-amber-900">{homeworkRate}%</div>
-          <p className="text-[11px] text-slate-400">{goodHwCount}/{totalRecords} bài đạt</p>
-        </div>
+          {/* Table of Entries */}
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden space-y-3 p-6">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-sm text-slate-800">
+                Chi Tiết Nhật Ký Đánh Giá ({studentEntries.length} bản ghi)
+              </h3>
+            </div>
 
-        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-1">
-          <span className="text-xs text-slate-500 font-medium">Tỷ lệ Tiếp thu Khá/Giỏi</span>
-          <div className="text-2xl font-black text-blue-900">{compRate}%</div>
-          <p className="text-[11px] text-slate-400">{goodCompCount}/{totalRecords} lượt đánh giá</p>
-        </div>
-
-        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-1">
-          <span className="text-xs text-slate-500 font-medium">Thái độ Tích cực</span>
-          <div className="text-2xl font-black text-purple-900">{attitudeRate}%</div>
-          <p className="text-[11px] text-slate-400">{activeAttCount}/{totalRecords} hăng hái</p>
-        </div>
-      </div>
-
-      {/* Table of Entries */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden space-y-3 p-6">
-        <div className="flex items-center justify-between">
-          <h3 className="font-bold text-sm text-slate-800">
-            Chi Tiết Nhật Ký Đánh Giá ({studentEntries.length} bản ghi)
-          </h3>
-        </div>
-
-        <div className="overflow-x-auto border-2 border-slate-300 rounded-2xl shadow-2xs">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead className="bg-slate-900 text-white font-black uppercase text-[11px] tracking-wider sticky top-0 z-10">
-              <tr>
-                <th className="p-3 w-12 text-center border-r border-slate-700">STT</th>
-                <th className="p-3 w-28 border-r border-slate-700">Ngày học</th>
-                <th className="p-3 w-28 border-r border-slate-700">Lớp</th>
-                <th className="p-3 w-48 border-r border-slate-700">Họ và Tên Học Sinh</th>
-                <th className="p-3 w-32 text-center border-r border-slate-700">Chuyên cần</th>
-                <th className="p-3 w-36 text-center border-r border-slate-700">BTVN</th>
-                <th className="p-3 w-32 text-center border-r border-slate-700">Tiếp thu</th>
-                <th className="p-3 w-32 text-center border-r border-slate-700">Thái độ</th>
-                <th className="p-3">Nhận xét của Trợ giảng</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y-2 divide-slate-200">
-              {studentEntries.map((item, idx) => {
-                const isEven = idx % 2 === 0;
-                const rowBg = isEven ? "bg-white hover:bg-amber-100/80" : "bg-sky-100/80 hover:bg-amber-100/80";
-                const attInfo = getAttendanceLabel(item.attendance);
-                const hwInfo = getHomeworkLabel(item.homework);
-                const compInfo = getComprehensionLabel(item.comprehension);
-                const attdInfo = getAttitudeLabel(item.attitude);
-
-                return (
-                  <tr key={idx} className={`${rowBg} transition-colors border-b border-slate-300`}>
-                    {/* STT */}
-                    <td className="p-3 text-center border-r border-slate-300">
-                      <span className={`inline-flex items-center justify-center w-6 h-6 rounded-md text-xs font-black ${isEven ? "bg-slate-100 text-slate-800 border border-slate-300" : "bg-blue-200 text-blue-950 border border-blue-400"}`}>
-                        {idx + 1}
-                      </span>
-                    </td>
-
-                    {/* Ngày */}
-                    <td className="p-3 font-bold text-slate-800 border-r border-slate-300 whitespace-nowrap">
-                      {item.date}
-                    </td>
-
-                    {/* Lớp */}
-                    <td className="p-3 font-black text-emerald-950 border-r border-slate-300 whitespace-nowrap">
-                      <span className="px-2 py-0.5 rounded-md bg-emerald-100 border border-emerald-300">
-                        {item.className.split("–")[0].trim()}
-                      </span>
-                    </td>
-
-                    {/* Học sinh */}
-                    <td className="p-3 font-black text-slate-950 border-r border-slate-300 text-xs sm:text-sm">
-                      {item.studentName}
-                    </td>
-
-                    {/* Chuyên cần */}
-                    <td className="p-2.5 text-center border-r border-slate-300">
-                      <span className={`inline-block px-2.5 py-1 rounded-lg text-[11px] border shadow-2xs ${attInfo.badgeClass}`}>
-                        {attInfo.label}
-                      </span>
-                    </td>
-
-                    {/* BTVN */}
-                    <td className="p-2.5 text-center border-r border-slate-300">
-                      <div className="flex flex-col items-center gap-0.5">
-                        <span className={`inline-block px-2 py-0.5 rounded-lg text-[11px] border shadow-2xs ${hwInfo.badgeClass}`}>
-                          {hwInfo.label}
-                        </span>
-                        {item.homeworkScore !== undefined && item.homeworkScore !== null && (
-                          <span className="text-[10px] font-black text-slate-700">
-                            ({item.homeworkScore} điểm)
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Tiếp thu */}
-                    <td className="p-2.5 text-center border-r border-slate-300">
-                      <span className={`inline-block px-2 py-0.5 rounded-lg text-[11px] border shadow-2xs ${compInfo.badgeClass}`}>
-                        {compInfo.label}
-                      </span>
-                    </td>
-
-                    {/* Thái độ */}
-                    <td className="p-2.5 text-center border-r border-slate-300">
-                      <span className={`inline-block px-2 py-0.5 rounded-lg text-[11px] border shadow-2xs ${attdInfo.badgeClass}`}>
-                        {attdInfo.label}
-                      </span>
-                    </td>
-
-                    {/* Nhận xét */}
-                    <td className="p-3 text-slate-700 font-medium">
-                      {item.comment ? (
-                        <span className="text-slate-900">{item.comment}</span>
-                      ) : (
-                        <span className="text-slate-400 italic">-</span>
-                      )}
-                    </td>
+            <div className="overflow-x-auto border-2 border-slate-300 rounded-2xl shadow-2xs">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-slate-900 text-white font-black uppercase text-[11px] tracking-wider sticky top-0 z-10">
+                  <tr>
+                    <th className="p-3 w-12 text-center border-r border-slate-700">STT</th>
+                    <th className="p-3 w-28 border-r border-slate-700">Ngày học</th>
+                    <th className="p-3 w-28 border-r border-slate-700">Lớp</th>
+                    <th className="p-3 w-48 border-r border-slate-700">Họ và Tên Học Sinh</th>
+                    <th className="p-3 w-32 text-center border-r border-slate-700">Chuyên cần</th>
+                    <th className="p-3 w-36 text-center border-r border-slate-700">BTVN</th>
+                    <th className="p-3 w-32 text-center border-r border-slate-700">Tiếp thu</th>
+                    <th className="p-3 w-32 text-center border-r border-slate-700">Thái độ</th>
+                    <th className="p-3">Nhận xét của Trợ giảng</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                </thead>
+                <tbody className="divide-y-2 divide-slate-200">
+                  {studentEntries.map((item, idx) => {
+                    const isEven = idx % 2 === 0;
+                    const rowBg = isEven ? "bg-white hover:bg-amber-100/80" : "bg-sky-100/80 hover:bg-amber-100/80";
+                    const attInfo = getAttendanceLabel(item.attendance);
+                    const hwInfo = getHomeworkLabel(item.homework);
+                    const compInfo = getComprehensionLabel(item.comprehension);
+                    const attdInfo = getAttitudeLabel(item.attitude);
 
-      {/* Attendance & Tuition Matrix Report Section */}
-      <AttendanceReportSection initialClassId={selectedClass} />
+                    return (
+                      <tr key={idx} className={`${rowBg} transition-colors border-b border-slate-300`}>
+                        {/* STT */}
+                        <td className="p-3 text-center border-r border-slate-300">
+                          <span className={`inline-flex items-center justify-center w-6 h-6 rounded-md text-xs font-black ${isEven ? "bg-slate-100 text-slate-800 border border-slate-300" : "bg-blue-200 text-blue-950 border border-blue-400"}`}>
+                            {idx + 1}
+                          </span>
+                        </td>
+
+                        {/* Ngày */}
+                        <td className="p-3 font-bold text-slate-800 border-r border-slate-300 whitespace-nowrap">
+                          {item.date}
+                        </td>
+
+                        {/* Lớp */}
+                        <td className="p-3 font-black text-emerald-950 border-r border-slate-300 whitespace-nowrap">
+                          <span className="px-2 py-0.5 rounded-md bg-emerald-100 border border-emerald-300">
+                            {item.className.split("–")[0].trim()}
+                          </span>
+                        </td>
+
+                        {/* Học sinh */}
+                        <td className="p-3 font-black text-slate-950 border-r border-slate-300 text-xs sm:text-sm">
+                          {item.studentName}
+                        </td>
+
+                        {/* Chuyên cần */}
+                        <td className="p-2.5 text-center border-r border-slate-300">
+                          <span className={`inline-block px-2.5 py-1 rounded-lg text-[11px] border shadow-2xs ${attInfo.badgeClass}`}>
+                            {attInfo.label}
+                          </span>
+                        </td>
+
+                        {/* BTVN */}
+                        <td className="p-2.5 text-center border-r border-slate-300">
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className={`inline-block px-2 py-0.5 rounded-lg text-[11px] border shadow-2xs ${hwInfo.badgeClass}`}>
+                              {hwInfo.label}
+                            </span>
+                            {item.homeworkScore !== undefined && item.homeworkScore !== null && (
+                              <span className="text-[10px] font-black text-slate-700">
+                                ({item.homeworkScore} điểm)
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Tiếp thu */}
+                        <td className="p-2.5 text-center border-r border-slate-300">
+                          <span className={`inline-block px-2 py-0.5 rounded-lg text-[11px] border shadow-2xs ${compInfo.badgeClass}`}>
+                            {compInfo.label}
+                          </span>
+                        </td>
+
+                        {/* Thái độ */}
+                        <td className="p-2.5 text-center border-r border-slate-300">
+                          <span className={`inline-block px-2 py-0.5 rounded-lg text-[11px] border shadow-2xs ${attdInfo.badgeClass}`}>
+                            {attdInfo.label}
+                          </span>
+                        </td>
+
+                        {/* Nhận xét */}
+                        <td className="p-3 text-slate-700 font-medium">
+                          {item.comment ? (
+                            <span className="text-slate-900">{item.comment}</span>
+                          ) : (
+                            <span className="text-slate-400 italic">-</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW CONTENT 2: ATTENDANCE & TUITION MATRIX REPORT */}
+      {activeSubTab === "tuition" && (
+        <div className="animate-in fade-in duration-200">
+          <AttendanceReportSection initialClassId={selectedClass} />
+        </div>
+      )}
+
+      {/* VIEW CONTENT 3: ASSISTANT PAYROLL SECTION */}
+      {activeSubTab === "payroll" && (
+        <div className="animate-in fade-in duration-200">
+          <AssistantPayrollSection initialMonth={selectedMonth !== "all" ? selectedMonth : undefined} />
+        </div>
+      )}
     </div>
   );
 };

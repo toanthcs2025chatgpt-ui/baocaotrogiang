@@ -26,21 +26,28 @@ import {
   FileUp,
   Download,
   Upload,
+  RotateCcw,
+  Copy,
+  HelpCircle,
+  Code,
 } from "lucide-react";
 import { ClubSettings, User } from "../types";
 import { storageService } from "../services/storage";
 import { firebaseService } from "../services/firebase";
+import { AvatarUpload } from "./AvatarUpload";
 
 interface SettingsViewProps {
   currentUser: User;
   onResetDemo?: () => void;
   onWipeData: () => void;
+  onUserUpdate?: (user: User) => void;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
   currentUser,
   onResetDemo,
   onWipeData,
+  onUserUpdate,
 }) => {
   const [settings, setSettings] = useState<ClubSettings>(() => storageService.getSettings());
   const [adminUser, setAdminUser] = useState<User>(() => storageService.getAdminUser());
@@ -119,14 +126,32 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [driveEmail, setDriveEmail] = useState(
     settings.googleDriveConfig?.email || "toanthcs2025chatgpt@gmail.com"
   );
+  const [scriptWebhookUrl, setScriptWebhookUrl] = useState(
+    settings.googleDriveConfig?.scriptWebhookUrl || ""
+  );
+  const [driveFolderUrl, setDriveFolderUrl] = useState(
+    settings.googleDriveConfig?.driveFolderUrl || ""
+  );
+  const [copiedScript, setCopiedScript] = useState(false);
+  const [showScriptGuide, setShowScriptGuide] = useState(true);
   const [driveConnecting, setDriveConnecting] = useState(false);
   const [driveSyncing, setDriveSyncing] = useState(false);
   const [driveMessage, setDriveMessage] = useState<string | null>(null);
+  const [testingWebhook, setTestingWebhook] = useState(false);
+  const [webhookTestResult, setWebhookTestResult] = useState<{
+    success: boolean;
+    message?: string;
+    error?: string;
+    needsAuthAccess?: boolean;
+  } | null>(null);
 
   // Admin account form
+  const [adminName, setAdminName] = useState(adminUser.name || "Thầy Thắng (Chủ nhiệm)");
   const [adminEmail, setAdminEmail] = useState(adminUser.email || "thangsinh2444@gmail.com");
   const [adminUsername, setAdminUsername] = useState(adminUser.username || "thangsinh2444");
   const [adminPassword, setAdminPassword] = useState(adminUser.password || "123456");
+  const [adminPhone, setAdminPhone] = useState(adminUser.phone || "0988.123.456");
+  const [adminAvatar, setAdminAvatar] = useState(adminUser.avatar || "");
   const [showAdminPass, setShowAdminPass] = useState(false);
   const [adminAccountSaved, setAdminAccountSaved] = useState(false);
 
@@ -149,12 +174,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     e.preventDefault();
     const updated: User = {
       ...adminUser,
+      name: adminName.trim() || "Thầy Thắng (Chủ nhiệm)",
       email: adminEmail.trim().toLowerCase(),
       username: adminUsername.trim().toLowerCase(),
       password: adminPassword.trim(),
+      phone: adminPhone.trim(),
+      avatar: adminAvatar.trim(),
     };
     storageService.saveAdminUser(updated);
     setAdminUser(updated);
+    if (onUserUpdate && currentUser.role === "admin") {
+      onUserUpdate(updated);
+    }
     setAdminAccountSaved(true);
     setTimeout(() => setAdminAccountSaved(false), 3000);
   };
@@ -275,27 +306,53 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   // Google Drive Handlers
+  const handleSaveDriveConfig = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const updated: ClubSettings = {
+      ...settings,
+      googleDriveConfig: {
+        ...(settings.googleDriveConfig || { isConnected: true }),
+        isConnected: true,
+        email: driveEmail.trim() || "toanthcs2025chatgpt@gmail.com",
+        scriptWebhookUrl: scriptWebhookUrl.trim(),
+        driveFolderUrl: driveFolderUrl.trim(),
+        folderName: "CLB Toán Thầy Thắng - Báo Cáo Buổi Học",
+      },
+    };
+    setSettings(updated);
+    storageService.saveSettings(updated);
+    setIsDriveConnected(true);
+    setDriveMessage("✓ Đã lưu cấu hình Google Drive thành công!");
+    setTimeout(() => setDriveMessage(null), 4000);
+  };
+
   const handleConnectGoogleDrive = () => {
     setDriveConnecting(true);
     setDriveMessage(null);
     setTimeout(() => {
       const nowStr = new Date().toISOString().replace("T", " ").slice(0, 16);
+      const email = driveEmail.trim() || "toanthcs2025chatgpt@gmail.com";
       const updated: ClubSettings = {
         ...settings,
         googleDriveConfig: {
           isConnected: true,
-          email: driveEmail.trim() || "toanthcs2025chatgpt@gmail.com",
+          email,
+          scriptWebhookUrl: scriptWebhookUrl.trim(),
+          driveFolderUrl: driveFolderUrl.trim(),
           connectedAt: nowStr,
+          lastSyncAt: new Date().toLocaleString("vi-VN"),
+          lastSyncStatus: "success",
           autoSync: true,
           folderName: "CLB Toán Thầy Thắng - Báo Cáo Buổi Học",
         },
       };
       setSettings(updated);
       storageService.saveSettings(updated);
+      const syncRes = storageService.syncToGoogleDrive();
       setIsDriveConnected(true);
       setDriveConnecting(false);
-      setDriveMessage("✓ Đã kết nối Google Drive thành công với tài khoản " + (driveEmail.trim() || "toanthcs2025chatgpt@gmail.com"));
-    }, 1200);
+      setDriveMessage(`✓ Đã kết nối Google Drive thành công với tài khoản ${email}! ${syncRes.message}`);
+    }, 600);
   };
 
   const handleDisconnectGoogleDrive = () => {
@@ -303,6 +360,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       ...settings,
       googleDriveConfig: {
         isConnected: false,
+        email: driveEmail,
+        scriptWebhookUrl,
+        driveFolderUrl,
       },
     };
     setSettings(updated);
@@ -311,13 +371,117 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setDriveMessage("Đã ngắt kết nối Google Drive.");
   };
 
-  const handleSyncGoogleDrive = () => {
+  const handleSyncGoogleDrive = async (andOpenDrive: boolean = false) => {
     setDriveSyncing(true);
     setDriveMessage(null);
-    setTimeout(() => {
+    try {
+      const res = await storageService.syncToGoogleDriveLive(true);
       setDriveSyncing(false);
-      setDriveMessage("✓ Đã đồng bộ và sao lưu toàn bộ dữ liệu báo cáo lên Google Drive thành công!");
-    }, 1500);
+      if (res.success) {
+        setDriveMessage(`✓ ${res.message}`);
+        setSettings(storageService.getSettings());
+        if (andOpenDrive) {
+          const targetUrl =
+            driveFolderUrl.trim() || "https://drive.google.com/drive/u/0/my-drive";
+          window.open(targetUrl, "_blank", "noopener,noreferrer");
+        }
+      } else {
+        setDriveMessage(`⚠️ ${res.message}`);
+      }
+    } catch (err: any) {
+      setDriveSyncing(false);
+      setDriveMessage(`⚠️ Lỗi: ${err.message || "Không thể đồng bộ"}`);
+    }
+  };
+
+  const handleTestWebhook = async () => {
+    if (!scriptWebhookUrl.trim()) {
+      setWebhookTestResult({
+        success: false,
+        error: "Vui lòng dán đường dẫn Webhook (URL ứng dụng web Google Apps Script) trước khi kiểm tra.",
+      });
+      return;
+    }
+
+    setTestingWebhook(true);
+    setWebhookTestResult(null);
+
+    try {
+      const res = await storageService.testGoogleDriveWebhook(scriptWebhookUrl.trim());
+      setTestingWebhook(false);
+      setWebhookTestResult(res);
+
+      if (res.success) {
+        // Auto save this working webhook URL
+        const updated: ClubSettings = {
+          ...settings,
+          googleDriveConfig: {
+            ...(settings.googleDriveConfig || { isConnected: true }),
+            isConnected: true,
+            scriptWebhookUrl: scriptWebhookUrl.trim(),
+            driveFolderUrl: driveFolderUrl.trim(),
+            autoSync: true,
+          },
+        };
+        setSettings(updated);
+        storageService.saveSettings(updated);
+      }
+    } catch (err: any) {
+      setTestingWebhook(false);
+      setWebhookTestResult({
+        success: false,
+        error: err.message || "Lỗi không xác định khi kết nối Webhook",
+      });
+    }
+  };
+
+  const handleCopyAppsScript = () => {
+    const scriptCode = `// --- MÃ GOOGLE APPS SCRIPT ĐỒNG BỘ CLB TOÁN THẦY THẮNG ---
+function doPost(e) {
+  try {
+    var contents = e.postData.contents;
+    var payload = JSON.parse(contents);
+    var folderName = "CLB Toán Thầy Thắng - Báo Cáo Buổi Học";
+    var folders = DriveApp.getFoldersByName(folderName);
+    var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
+    var dateStr = Utilities.formatDate(new Date(), "GMT+7", "yyyy-MM-dd_HHmm");
+    var fileName = "SaoLuu_CLBToan_" + dateStr + ".json";
+    var file = folder.createFile(fileName, contents, MimeType.PLAIN_TEXT);
+    return ContentService.createTextOutput(JSON.stringify({ status: "success", fileId: file.getId(), url: file.getUrl() })).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", error: err.toString() })).setMimeType(ContentService.MimeType.JSON);
+  }
+}`;
+    navigator.clipboard.writeText(scriptCode);
+    setCopiedScript(true);
+    setTimeout(() => setCopiedScript(false), 3000);
+  };
+
+  const handleRestoreFromDrive = () => {
+    if (window.confirm("Bạn có chắc muốn khôi phục lại toàn bộ dữ liệu từ bản đồng bộ Google Drive gần nhất không?")) {
+      const res = storageService.restoreFromGoogleDriveSnapshot();
+      if (res.success) {
+        setDriveMessage(`✓ ${res.message}`);
+        setSettings(storageService.getSettings());
+        setTimeout(() => window.location.reload(), 1500);
+      } else {
+        setDriveMessage(`⚠️ ${res.message}`);
+      }
+    }
+  };
+
+  const handleToggleAutoSync = () => {
+    const currentAuto = settings.googleDriveConfig?.autoSync !== false;
+    const updated: ClubSettings = {
+      ...settings,
+      googleDriveConfig: {
+        ...(settings.googleDriveConfig || { isConnected: true }),
+        isConnected: true,
+        autoSync: !currentAuto,
+      },
+    };
+    setSettings(updated);
+    storageService.saveSettings(updated);
   };
 
   return (
@@ -582,7 +746,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 )}
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Tự động đồng bộ báo cáo học tập, danh sách học sinh và sao lưu dữ liệu CLB lên Google Drive an toàn.
+                Tự động đồng bộ báo cáo học tập, danh sách học sinh và sao lưu toàn bộ dữ liệu CLB lên Google Drive an toàn.
               </p>
             </div>
           </div>
@@ -590,13 +754,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {/* Connect / Disconnect Action Button */}
           <div className="flex items-center gap-2 self-start sm:self-auto">
             {isDriveConnected ? (
-              <button
-                type="button"
-                onClick={handleDisconnectGoogleDrive}
-                className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 text-xs font-bold transition-all border border-slate-200 cursor-pointer"
-              >
-                Ngắt kết nối
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSaveDriveConfig()}
+                  className="px-3.5 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 text-xs font-bold transition-all border border-blue-200 cursor-pointer flex items-center gap-1.5"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Lưu cấu hình</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDisconnectGoogleDrive}
+                  className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 text-xs font-bold transition-all border border-slate-200 cursor-pointer"
+                >
+                  Ngắt kết nối
+                </button>
+              </div>
             ) : (
               <button
                 type="button"
@@ -618,7 +792,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         {driveMessage && (
           <div
             className={`p-3 rounded-2xl text-xs font-bold flex items-center gap-2 ${
-              driveMessage.includes("Lỗi")
+              driveMessage.includes("Lỗi") || driveMessage.includes("⚠️")
                 ? "bg-rose-50 text-rose-800 border border-rose-200"
                 : "bg-emerald-50 text-emerald-900 border border-emerald-200"
             }`}
@@ -637,12 +811,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               value={driveEmail}
               onChange={(e) => setDriveEmail(e.target.value)}
               placeholder="toanthcs2025chatgpt@gmail.com"
-              disabled={isDriveConnected}
-              className={`w-full p-2.5 rounded-xl border font-bold text-slate-800 focus:outline-none ${
-                isDriveConnected
-                  ? "bg-slate-100 border-slate-200 text-slate-600"
-                  : "bg-white border-slate-300 focus:border-blue-600"
-              }`}
+              className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold text-slate-800 focus:outline-none focus:border-blue-600"
             />
           </div>
 
@@ -657,41 +826,294 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-100 font-bold text-slate-700 focus:outline-none"
             />
           </div>
+
+          <div className="sm:col-span-2">
+            <label className="font-bold text-slate-700 block mb-1">
+              Đường link thư mục Google Drive (Tùy chọn - để mở nhanh):
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="url"
+                value={driveFolderUrl}
+                onChange={(e) => setDriveFolderUrl(e.target.value)}
+                placeholder="https://drive.google.com/drive/folders/..."
+                className="flex-1 p-2.5 rounded-xl border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-600"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const target = driveFolderUrl.trim() || "https://drive.google.com/drive/u/0/my-drive";
+                  window.open(target, "_blank", "noopener,noreferrer");
+                }}
+                className="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center gap-1.5 border border-slate-300 cursor-pointer shrink-0"
+              >
+                <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
+                <span>Mở Drive</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         {isDriveConnected && (
-          <div className="p-4 rounded-2xl bg-white border border-blue-200 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+          <div className="p-4 rounded-2xl bg-white border border-blue-200 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs pb-3 border-b border-slate-100">
               <div className="space-y-1">
-                <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                <div className="font-black text-slate-800 flex items-center gap-1.5">
                   <FolderCheck className="w-4 h-4 text-blue-600" />
-                  <span>Trạng thái đồng bộ Drive: <strong>Hoạt động tốt</strong></span>
+                  <span>Trạng thái kết nối: <strong className="text-emerald-700">Đang hoạt động & Sẵn sàng đồng bộ</strong></span>
                 </div>
-                <p className="text-[11px] text-slate-500">
-                  Thư mục đồng bộ: <code>/CLB Toán Thầy Thắng - Báo Cáo Buổi Học/</code>
-                </p>
+                <div className="text-[11px] text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span>Thư mục Drive: <code>/CLB Toán Thầy Thắng - Báo Cáo Buổi Học/</code></span>
+                  {settings.googleDriveConfig?.lastSyncAt && (
+                    <span className="text-blue-900 font-bold bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                      Lần đồng bộ gần nhất: {settings.googleDriveConfig.lastSyncAt}
+                    </span>
+                  )}
+                  {settings.googleDriveConfig?.lastSyncItemCount !== undefined && (
+                    <span className="text-emerald-900 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                      ✓ Đã đồng bộ an toàn {settings.googleDriveConfig.lastSyncItemCount} mục
+                    </span>
+                  )}
+                </div>
               </div>
 
+              {/* Auto Sync Toggle */}
               <button
                 type="button"
-                onClick={handleSyncGoogleDrive}
+                onClick={handleToggleAutoSync}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center gap-2 cursor-pointer self-start sm:self-auto ${
+                  settings.googleDriveConfig?.autoSync !== false
+                    ? "bg-emerald-50 text-emerald-900 border-emerald-300 hover:bg-emerald-100"
+                    : "bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200"
+                }`}
+              >
+                <div
+                  className={`w-2.5 h-2.5 rounded-full ${
+                    settings.googleDriveConfig?.autoSync !== false
+                      ? "bg-emerald-500 animate-pulse"
+                      : "bg-slate-400"
+                  }`}
+                />
+                <span>
+                  {settings.googleDriveConfig?.autoSync !== false
+                    ? "Tự động đồng bộ: BẬT"
+                    : "Tự động đồng bộ: TẮT"}
+                </span>
+              </button>
+            </div>
+
+            {/* Quick Action Buttons for Drive */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => handleSyncGoogleDrive(false)}
                 disabled={driveSyncing}
-                className="px-4 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 text-xs font-black flex items-center gap-1.5 transition-colors border border-blue-200 cursor-pointer self-start sm:self-auto"
+                className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black flex items-center gap-1.5 transition-all border border-blue-700 shadow-sm cursor-pointer"
               >
                 {driveSyncing ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  <RefreshCw className="w-3.5 h-3.5 text-blue-700" />
+                  <RefreshCw className="w-3.5 h-3.5" />
                 )}
-                <span>Sao lưu lên Google Drive ngay</span>
+                <span>Đồng bộ & Tải file lên Drive ngay</span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => handleSyncGoogleDrive(true)}
+                disabled={driveSyncing}
+                className="px-4 py-2.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-950 text-xs font-black flex items-center gap-1.5 transition-colors border border-sky-300 cursor-pointer"
+              >
+                <ExternalLink className="w-3.5 h-3.5 text-sky-700" />
+                <span>Đồng bộ + Mở Google Drive</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleRestoreFromDrive}
+                className="px-4 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-950 text-xs font-black flex items-center gap-1.5 transition-colors border border-amber-300 cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
+                <span>Khôi phục từ bản Drive</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    const filename = storageService.downloadBackupJSON();
+                    setDriveMessage(`✓ Đã tải file sao lưu: ${filename}`);
+                  } catch (e: any) {
+                    setDriveMessage(`⚠️ Lỗi: ${e.message}`);
+                  }
+                }}
+                className="px-4 py-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-800 text-xs font-bold flex items-center gap-1.5 transition-colors border border-slate-300 cursor-pointer"
+              >
+                <FileDown className="w-3.5 h-3.5 text-blue-700" />
+                <span>Tải file dữ liệu (.json)</span>
+              </button>
+            </div>
+
+            {/* Google Apps Script Webhook Integration Section (Optional direct cloud push) */}
+            <div className="mt-4 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowScriptGuide(!showScriptGuide)}
+                className="text-xs font-bold text-blue-700 hover:text-blue-900 flex items-center gap-1.5 cursor-pointer"
+              >
+                <Code className="w-3.5 h-3.5" />
+                <span>
+                  {showScriptGuide
+                    ? "Ẩn hướng dẫn Tự động hóa Google Apps Script Webhook (Đẩy trực tiếp không cần mở tab)"
+                    : "⚙️ Tùy chọn nâng cao: Tự động lưu thẳng vào Drive bằng Google Apps Script Webhook"}
+                </span>
+              </button>
+
+              {showScriptGuide && (
+                <div className="mt-3 p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs space-y-3 text-slate-700">
+                  <p className="font-bold text-slate-900">
+                    Cách tạo Webhook đẩy dữ liệu trực tiếp vào Google Drive (chỉ mất 1 phút):
+                  </p>
+                  <ol className="list-decimal pl-4 space-y-1.5 text-[11px] leading-relaxed">
+                    <li>
+                      Mở <a href="https://script.google.com" target="_blank" rel="noreferrer" className="text-blue-600 underline font-bold">script.google.com</a> và bấm <strong>Dự án mới</strong>.
+                    </li>
+                    <li>
+                      Dán đoạn mã dưới đây vào file <code>Mã.gs</code>:
+                    </li>
+                  </ol>
+
+                  <div className="relative">
+                    <pre className="p-3 bg-slate-900 text-emerald-400 font-mono text-[11px] rounded-xl overflow-x-auto">
+{`function doPost(e) {
+  try {
+    var contents = e.postData.contents;
+    var folderName = "CLB Toán Thầy Thắng - Báo Cáo Buổi Học";
+    var folders = DriveApp.getFoldersByName(folderName);
+    var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
+    var dateStr = Utilities.formatDate(new Date(), "GMT+7", "yyyy-MM-dd_HHmm");
+    var fileName = "SaoLuu_CLBToan_" + dateStr + ".json";
+    var file = folder.createFile(fileName, contents, MimeType.PLAIN_TEXT);
+    return ContentService.createTextOutput(JSON.stringify({ status: "success", fileId: file.getId() })).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", error: err.toString() })).setMimeType(ContentService.MimeType.JSON);
+  }
+}`}
+                    </pre>
+                    <button
+                      type="button"
+                      onClick={handleCopyAppsScript}
+                      className="absolute top-2 right-2 px-2.5 py-1 bg-white/20 hover:bg-white/30 text-white rounded-lg text-[10px] font-bold flex items-center gap-1"
+                    >
+                      {copiedScript ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedScript ? "Đã chép mã" : "Chép mã"}</span>
+                    </button>
+                  </div>
+
+                  <ol start={3} className="list-decimal pl-4 space-y-1.5 text-[11px] leading-relaxed">
+                    <li>
+                      Bấm <strong>Triển khai (Deploy)</strong> &gt; <strong>Tùy chọn triển khai mới (New deployment)</strong> &gt; Chọn loại <strong>Ứng dụng web (Web app)</strong>.
+                    </li>
+                    <li>
+                      Chọn <em>Thực thi dưới dạng:</em> <strong>Tôi (My account)</strong> | <em>Ai có quyền truy cập:</em> <strong>Bất kỳ ai (Anyone)</strong>.
+                    </li>
+                    <li>
+                      Sao chép URL ứng dụng web (dạng <code>https://script.google.com/macros/s/.../exec</code>) và dán vào ô bên dưới:
+                    </li>
+                  </ol>
+
+                  <div className="space-y-3 pt-1">
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="url"
+                        value={scriptWebhookUrl}
+                        onChange={(e) => {
+                          setScriptWebhookUrl(e.target.value);
+                          setWebhookTestResult(null);
+                        }}
+                        placeholder="https://script.google.com/macros/s/.../exec"
+                        className="flex-1 p-2.5 rounded-xl border border-slate-300 bg-white font-mono text-xs focus:outline-none focus:border-blue-600 shadow-inner"
+                      />
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleTestWebhook}
+                          disabled={testingWebhook || !scriptWebhookUrl.trim()}
+                          className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs cursor-pointer flex items-center gap-1.5 shadow-sm transition-all shrink-0"
+                        >
+                          {testingWebhook ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Check className="w-3.5 h-3.5" />
+                          )}
+                          <span>Kiểm tra & Lưu</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSaveDriveConfig()}
+                          className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl text-xs cursor-pointer border border-slate-300 shrink-0"
+                        >
+                          Lưu
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Webhook Test Diagnostic Result Card */}
+                    {webhookTestResult && (
+                      <div
+                        className={`p-3.5 rounded-xl text-xs space-y-1.5 border leading-relaxed ${
+                          webhookTestResult.success
+                            ? "bg-emerald-50 text-emerald-950 border-emerald-300"
+                            : "bg-rose-50 text-rose-950 border-rose-300"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 font-black">
+                          {webhookTestResult.success ? (
+                            <>
+                              <Check className="w-4 h-4 text-emerald-600" />
+                              <span>✓ Kết nối Webhook Google Drive thành công 100%!</span>
+                            </>
+                          ) : (
+                            <>
+                              <HelpCircle className="w-4 h-4 text-rose-600" />
+                              <span>⚠️ Chưa kết nối được với Google Apps Script</span>
+                            </>
+                          )}
+                        </div>
+
+                        <p className="text-[11px] opacity-90">
+                          {webhookTestResult.message || webhookTestResult.error}
+                        </p>
+
+                        {webhookTestResult.needsAuthAccess && (
+                          <div className="mt-2 p-2.5 rounded-lg bg-amber-100/90 text-amber-950 border border-amber-300 text-[11px] space-y-1">
+                            <p className="font-bold">👉 Cách sửa lỗi quyền truy cập trong Google Apps Script:</p>
+                            <p>
+                              1. Vào trang script của bạn &gt; Bấm nút <strong>Triển khai (Deploy)</strong> &gt; <strong>Quản lý bản triển khai (Manage deployments)</strong>.
+                            </p>
+                            <p>
+                              2. Bấm biểu tượng ✏️ <strong>Chỉnh sửa (Edit)</strong>.
+                            </p>
+                            <p>
+                              3. Tại mục <strong>Ai có quyền truy cập (Who has access)</strong>, chọn: <strong>Bất kỳ ai (Anyone)</strong> (thay vì "Chỉ mình tôi").
+                            </p>
+                            <p>
+                              4. Chọn <em>Phiên bản:</em> <strong>Mới (New)</strong> và bấm <strong>Triển khai (Deploy)</strong>.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
       </div>
 
-      {/* SECTION 2.5: ADMIN ACCOUNT & SECURITY */}
-      <form onSubmit={handleSaveAdminAccount} className="bg-white rounded-3xl p-6 border-2 border-amber-300 bg-amber-50/20 shadow-sm space-y-5">
+      {/* SECTION 2.5: ADMIN ACCOUNT & SECURITY & AVATAR */}
+      <form onSubmit={handleSaveAdminAccount} className="bg-white rounded-3xl p-6 border-2 border-amber-300 bg-amber-50/20 shadow-sm space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-200/80 pb-3">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-black text-sm shadow-xs">
@@ -699,13 +1121,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
             <div>
               <h3 className="font-black text-sm text-slate-900 flex items-center gap-2">
-                <span>Tài Khoản Quản Trị Viên (Admin - Thầy Thắng)</span>
+                <span>Tài Khoản & Ảnh Đại Diện Quản Trị Viên (Admin - Thầy Thắng)</span>
                 <span className="text-[10px] bg-amber-200 text-amber-950 font-black px-2 py-0.5 rounded-md">
                   Chủ nhiệm
                 </span>
               </h3>
               <p className="text-xs text-slate-500">
-                Đổi Gmail đăng nhập, Tên đăng nhập và Mật khẩu bảo vệ của Admin.
+                Đổi ảnh đại diện Admin, Tên hiển thị, Gmail đăng nhập, Username và Mật khẩu quản trị.
               </p>
             </div>
           </div>
@@ -713,12 +1135,37 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {adminAccountSaved && (
             <div className="px-3 py-1 rounded-xl bg-emerald-100 text-emerald-800 text-xs font-black flex items-center gap-1.5 self-start sm:self-auto border border-emerald-300">
               <Check className="w-3.5 h-3.5" />
-              <span>Đã lưu tài khoản Admin!</span>
+              <span>Đã lưu tài khoản & ảnh đại diện Admin!</span>
             </div>
           )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+        {/* Avatar Upload for Admin */}
+        <div className="p-4 rounded-2xl bg-white border border-amber-200 shadow-2xs">
+          <AvatarUpload
+            value={adminAvatar}
+            onChange={(url) => setAdminAvatar(url)}
+            name={adminName}
+            label="Ảnh đại diện Quản Trị Viên (Admin - Thầy Thắng):"
+            type="admin"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
+          <div>
+            <label className="font-black text-slate-700 block mb-1">
+              Tên hiển thị Quản Trị Viên:
+            </label>
+            <input
+              type="text"
+              required
+              value={adminName}
+              onChange={(e) => setAdminName(e.target.value)}
+              placeholder="Thầy Thắng (Chủ nhiệm)"
+              className="w-full p-2.5 rounded-xl border-2 border-slate-200 bg-white focus:outline-none focus:border-amber-500 font-bold text-slate-900"
+            />
+          </div>
+
           <div>
             <label className="font-black text-slate-700 block mb-1">
               Gmail đăng nhập Admin:
@@ -729,6 +1176,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               value={adminEmail}
               onChange={(e) => setAdminEmail(e.target.value)}
               placeholder="thangsinh2444@gmail.com"
+              className="w-full p-2.5 rounded-xl border-2 border-slate-200 bg-white focus:outline-none focus:border-amber-500 font-bold text-slate-900"
+            />
+          </div>
+
+          <div>
+            <label className="font-black text-slate-700 block mb-1">
+              Số điện thoại Admin / Hotline:
+            </label>
+            <input
+              type="tel"
+              value={adminPhone}
+              onChange={(e) => setAdminPhone(e.target.value)}
+              placeholder="0988.123.456"
               className="w-full p-2.5 rounded-xl border-2 border-slate-200 bg-white focus:outline-none focus:border-amber-500 font-bold text-slate-900"
             />
           </div>
@@ -747,7 +1207,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             />
           </div>
 
-          <div>
+          <div className="sm:col-span-2 lg:col-span-2">
             <label className="font-black text-slate-700 block mb-1">
               Mật khẩu Admin:
             </label>
@@ -773,14 +1233,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         <div className="flex items-center justify-between pt-3 border-t border-amber-200/80">
           <p className="text-[11px] text-slate-500 italic">
-            * Lưu ý: Mật khẩu mặc định là <strong>123456</strong>. Bạn có thể đổi sang mật khẩu bảo mật hơn bất cứ lúc nào.
+            * Sau khi lưu, ảnh đại diện sẽ tự động cập nhật ngay trên thanh Header, thẻ Admin và hệ thống.
           </p>
           <button
             type="submit"
             className="px-5 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 active:bg-amber-500 text-slate-950 text-xs font-black flex items-center gap-1.5 shadow-[0_3px_0_0_#b45309] active:shadow-none active:translate-y-0.5 border border-amber-300 transition-all cursor-pointer"
           >
             <Save className="w-4 h-4 text-slate-950" />
-            <span>Lưu tài khoản Admin</span>
+            <span>Lưu tài khoản & Ảnh Admin</span>
           </button>
         </div>
       </form>

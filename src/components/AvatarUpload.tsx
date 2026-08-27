@@ -15,10 +15,10 @@ interface AvatarUploadProps {
   onChange: (avatarUrl: string) => void;
   name?: string;
   label?: string;
-  type?: "student" | "assistant" | "user";
+  type?: "student" | "assistant" | "admin" | "user";
 }
 
-// Preset avatars curated for Students & Assistants
+// Preset avatars curated for Students, Assistants & Teachers/Admins
 const PRESET_STUDENT_AVATARS = [
   "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
   "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&auto=format&fit=crop&q=80",
@@ -41,6 +41,17 @@ const PRESET_ASSISTANT_AVATARS = [
   "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150&auto=format&fit=crop&q=80",
 ];
 
+const PRESET_ADMIN_AVATARS = [
+  "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=150&auto=format&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80",
+  "https://images.unsplash.com/photo-1580894732444-8ecded7900cd?w=150&auto=format&fit=crop&q=80",
+];
+
 export const AvatarUpload: React.FC<AvatarUploadProps> = ({
   value,
   onChange,
@@ -53,7 +64,12 @@ export const AvatarUpload: React.FC<AvatarUploadProps> = ({
   const [customUrl, setCustomUrl] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const presets = type === "assistant" ? PRESET_ASSISTANT_AVATARS : PRESET_STUDENT_AVATARS;
+  const presets =
+    type === "admin"
+      ? PRESET_ADMIN_AVATARS
+      : type === "assistant"
+      ? PRESET_ASSISTANT_AVATARS
+      : PRESET_STUDENT_AVATARS;
   const initialChar = name.trim() ? name.trim().charAt(name.trim().lastIndexOf(" ") + 1) || name.trim().charAt(0) : "?";
 
   // Compress & convert file to Base64 (max 240x240) to keep localStorage fast
@@ -138,7 +154,9 @@ export const AvatarUpload: React.FC<AvatarUploadProps> = ({
           <div
             className={`w-28 h-28 sm:w-32 sm:h-32 rounded-3xl overflow-hidden flex items-center justify-center font-black text-3xl border-3 shadow-md transition-all ${
               value
-                ? "border-blue-400 bg-slate-100"
+                ? "border-amber-400 bg-slate-100"
+                : type === "admin"
+                ? "bg-amber-400 text-slate-950 border-amber-500 shadow-lg shadow-amber-500/20"
                 : type === "assistant"
                 ? "bg-blue-600 text-white border-blue-700"
                 : "bg-emerald-600 text-amber-300 border-emerald-700"

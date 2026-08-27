@@ -66,6 +66,44 @@ function formatMonthDisplay(yearMonth: string): string {
   return yearMonth;
 }
 
+// Helper to format Date to YYYY-MM-DD
+function formatDateString(d: Date): string {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// Helper to get week boundaries from any date YYYY-MM-DD
+function getWeekBoundaries(dateStr: string) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const targetDate = new Date(y, m - 1, d);
+  const day = targetDate.getDay();
+  // Monday is 1, Sunday is 0 -> diff to Monday
+  const diff = targetDate.getDate() - day + (day === 0 ? -6 : 1);
+  const monday = new Date(y, m - 1, diff);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+
+  const startStr = formatDateString(monday);
+  const endStr = formatDateString(sunday);
+
+  const mParts = startStr.split("-");
+  const sParts = endStr.split("-");
+
+  const label = `Tuần ${mParts[2]}/${mParts[1]} – ${sParts[2]}/${sParts[1]}/${sParts[0]}`;
+  const shortLabel = `${mParts[2]}/${mParts[1]} – ${sParts[2]}/${sParts[1]}`;
+
+  return {
+    monday,
+    sunday,
+    startStr,
+    endStr,
+    label,
+    shortLabel,
+  };
+}
+
 // Format YYYY-MM-DD to "Thứ X, DD/MM/YYYY"
 function formatFullDateVN(dateStr: string): string {
   if (!dateStr) return "";
@@ -95,6 +133,9 @@ export const TeachingHistorySection: React.FC<TeachingHistorySectionProps> = ({
   onNavigateCreateReport,
   onOpenSlotDetail,
 }) => {
+  // Mode: "month" (Tháng) or "week" (Tuần)
+  const [timeViewMode, setTimeViewMode] = useState<"month" | "week">("month");
+
   // Current selected month: default to current month YYYY-MM (e.g. 2026-08)
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     const now = new Date();
@@ -102,6 +143,16 @@ export const TeachingHistorySection: React.FC<TeachingHistorySectionProps> = ({
     const mm = String(now.getMonth() + 1).padStart(2, "0");
     return `${yyyy}-${mm}`;
   });
+
+  // Current selected week date: default to today YYYY-MM-DD
+  const [selectedWeekDate, setSelectedWeekDate] = useState<string>(() => {
+    return formatDateString(new Date());
+  });
+
+  // Computed week boundaries
+  const weekInfo = useMemo(() => {
+    return getWeekBoundaries(selectedWeekDate);
+  }, [selectedWeekDate]);
 
   // Filter states
   const [filterClass, setFilterClass] = useState<string>("all");
@@ -166,27 +217,53 @@ export const TeachingHistorySection: React.FC<TeachingHistorySectionProps> = ({
     setSelectedMonth(`${yyyy}-${mm}`);
   };
 
-  // Combine Timetable Slots and Reports for the selected month
+  // Quick week changes
+  const handlePrevWeek = () => {
+    const [y, m, d] = selectedWeekDate.split("-").map(Number);
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() - 7);
+    setSelectedWeekDate(formatDateString(dt));
+  };
+
+  const handleNextWeek = () => {
+    const [y, m, d] = selectedWeekDate.split("-").map(Number);
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() + 7);
+    setSelectedWeekDate(formatDateString(dt));
+  };
+
+  const handleCurrentWeek = () => {
+    setSelectedWeekDate(formatDateString(new Date()));
+  };
+
+  // Combine Timetable Slots and Reports for the selected period (Month or Week)
   const monthTeachingSessions = useMemo(() => {
     const allSlots = storageService.getTimetableSlots();
     const allReports = storageService.getReports();
 
+    // Check if a date string falls inside the active time window (Month or Week)
+    const isDateInPeriod = (dateStr?: string) => {
+      if (!dateStr) return false;
+      if (timeViewMode === "month") {
+        return dateStr.startsWith(selectedMonth);
+      } else {
+        return dateStr >= weekInfo.startStr && dateStr <= weekInfo.endStr;
+      }
+    };
+
     // Map reports by date + class or className
     const reportMap = new Map<string, Report>();
     for (const rep of allReports) {
-      if (rep.date && rep.date.startsWith(selectedMonth)) {
+      if (isDateInPeriod(rep.date)) {
         reportMap.set(`${rep.date}_${rep.className}`, rep);
         reportMap.set(`${rep.date}_${rep.classId}`, rep);
       }
     }
 
-    // Filter slots for this month
-    const slotsInMonth = allSlots.filter((slot) => {
-      if (!slot.date) return false;
-      return slot.date.startsWith(selectedMonth);
-    });
+    // Filter slots for this period
+    const slotsInPeriod = allSlots.filter((slot) => isDateInPeriod(slot.date));
 
-    // Also check if there are reports in this month that might not have a slot, create a session
+    // Also check if there are reports in this period that might not have a slot, create a session
     const combinedSessions: Array<
       TimetableSlot & {
         report?: Report;
@@ -196,7 +273,7 @@ export const TeachingHistorySection: React.FC<TeachingHistorySectionProps> = ({
 
     const processedKeys = new Set<string>();
 
-    for (const slot of slotsInMonth) {
+    for (const slot of slotsInPeriod) {
       const normalizedClass = storageService.normalizeClassReference(slot.classId, slot.className);
       const rep =
         reportMap.get(`${slot.date}_${normalizedClass.className}`) ||
@@ -216,7 +293,7 @@ export const TeachingHistorySection: React.FC<TeachingHistorySectionProps> = ({
 
     // Add any orphan reports that didn't match an existing timetable slot
     for (const rep of allReports) {
-      if (rep.date && rep.date.startsWith(selectedMonth)) {
+      if (isDateInPeriod(rep.date)) {
         const normalizedClass = storageService.normalizeClassReference(rep.classId, rep.className);
         if (
           !processedKeys.has(`${rep.date}_${normalizedClass.className}`) &&
@@ -291,9 +368,9 @@ export const TeachingHistorySection: React.FC<TeachingHistorySectionProps> = ({
     });
 
     return filtered;
-  }, [selectedMonth, filterClass, filterReportStatus, searchKeyword, sortOrder]);
+  }, [timeViewMode, selectedMonth, selectedWeekDate, weekInfo, filterClass, filterReportStatus, searchKeyword, sortOrder]);
 
-  // Statistics for this month
+  // Statistics for this active period (month or week)
   const monthStats = useMemo(() => {
     const totalSessions = monthTeachingSessions.length;
     const reportedSessions = monthTeachingSessions.filter((s) => s.hasReport).length;
@@ -309,15 +386,17 @@ export const TeachingHistorySection: React.FC<TeachingHistorySectionProps> = ({
     };
   }, [monthTeachingSessions]);
 
-  // Export to Excel
+  // Dynamic period label for UI & Export
+  const periodLabel = timeViewMode === "month" ? formatMonthDisplay(selectedMonth) : weekInfo.label;
+  const periodTypeLabel = timeViewMode === "month" ? "Tháng" : "Tuần";
+
+  // Export to Excel (supports both Month and Week)
   const handleExportMonthExcel = () => {
     const exportData: any[] = [];
 
     // Header metadata
     exportData.push([
-      `SỔ THEO DÕI LỊCH SỬ DẠY HỌC & TIẾN ĐỘ BÀI GIẢNG – ${formatMonthDisplay(
-        selectedMonth
-      ).toUpperCase()}`,
+      `SỔ THEO DÕI LỊCH SỬ DẠY HỌC & TIẾN ĐỘ BÀI GIẢNG – ${periodLabel.toUpperCase()}`,
     ]);
     exportData.push([`CLB Toán Thầy Thắng • Xuất ngày: ${new Date().toLocaleDateString("vi-VN")}`]);
     exportData.push([]);
@@ -389,7 +468,54 @@ export const TeachingHistorySection: React.FC<TeachingHistorySectionProps> = ({
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "LichSuDayHoc");
-    XLSX.writeFile(wb, `LichSuDayHoc_${selectedMonth.replace("-", "_")}.xlsx`);
+    const fileSuffix =
+      timeViewMode === "month"
+        ? `Thang_${selectedMonth.replace("-", "_")}`
+        : `Tuan_${weekInfo.startStr}_den_${weekInfo.endStr}`;
+    XLSX.writeFile(wb, `LichSuDayHoc_${fileSuffix}.xlsx`);
+  };
+
+  // Helper to get class theme & vibrant color
+  const getClassTheme = (className: string) => {
+    const name = (className || "").toLowerCase();
+    if (name.includes("9a") || name.includes("lớp 9") || name.includes("9")) {
+      return {
+        badge: "bg-indigo-600 text-white shadow-xs",
+        borderLeft: "border-l-indigo-600",
+        bgLight: "bg-indigo-50/50",
+        textAccent: "text-indigo-700",
+      };
+    }
+    if (name.includes("8a") || name.includes("lớp 8") || name.includes("8")) {
+      return {
+        badge: "bg-teal-600 text-white shadow-xs",
+        borderLeft: "border-l-teal-600",
+        bgLight: "bg-teal-50/50",
+        textAccent: "text-teal-700",
+      };
+    }
+    if (name.includes("7a") || name.includes("lớp 7") || name.includes("7")) {
+      return {
+        badge: "bg-blue-600 text-white shadow-xs",
+        borderLeft: "border-l-blue-600",
+        bgLight: "bg-blue-50/50",
+        textAccent: "text-blue-700",
+      };
+    }
+    if (name.includes("6a") || name.includes("lớp 6") || name.includes("6")) {
+      return {
+        badge: "bg-amber-600 text-white shadow-xs",
+        borderLeft: "border-l-amber-600",
+        bgLight: "bg-amber-50/50",
+        textAccent: "text-amber-700",
+      };
+    }
+    return {
+      badge: "bg-slate-800 text-white shadow-xs",
+      borderLeft: "border-l-slate-700",
+      bgLight: "bg-slate-50/50",
+      textAccent: "text-slate-800",
+    };
   };
 
   // Helper to get shift badge
@@ -440,82 +566,175 @@ export const TeachingHistorySection: React.FC<TeachingHistorySectionProps> = ({
                 Sổ Theo Dõi Giảng Dạy
               </span>
               <span className="px-3 py-1 rounded-xl bg-blue-100 text-blue-950 border border-blue-300 font-black text-xs">
-                {formatMonthDisplay(selectedMonth)}
+                {periodLabel}
               </span>
             </div>
             <h2 className="text-xl sm:text-2xl font-black text-slate-950 tracking-tight flex items-center gap-2">
-              <span>📜 Lịch Sử Dạy Học & Tiến Độ Từng Tháng</span>
+              <span>
+                {timeViewMode === "month"
+                  ? "📜 Lịch Sử Dạy Học & Tiến Độ Từng Tháng"
+                  : "📆 Lịch Sử Dạy Học & Tiến Độ Từng Tuần"}
+              </span>
             </h2>
             <p className="text-xs text-slate-600 font-medium max-w-3xl">
-              Xem chi tiết tất cả các buổi đã dạy trong tháng: nội dung bài học, tiến độ thực tế, bài tập về nhà (BTVN), giáo viên, trợ giảng và báo cáo ca dạy chuyên cần.
+              {timeViewMode === "month"
+                ? "Xem chi tiết tất cả các buổi đã dạy trong tháng: nội dung bài học, tiến độ thực tế, bài tập về nhà (BTVN), giáo viên, trợ giảng và báo cáo ca dạy chuyên cần."
+                : `Xem chi tiết các buổi dạy trong tuần (${weekInfo.label}): nội dung bài giảng, tiến độ thực tế, BTVN và báo cáo ca dạy.`}
             </p>
           </div>
 
-          {/* Action buttons on top right */}
-          <div className="flex flex-wrap items-center gap-2">
+          {/* Action buttons and View Mode Switcher on top right */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* View Mode Toggle: Tháng / Tuần */}
+            <div className="inline-flex items-center bg-slate-100 p-1 rounded-2xl border-2 border-slate-300 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setTimeViewMode("month")}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-black text-xs transition-all cursor-pointer ${
+                  timeViewMode === "month"
+                    ? "bg-indigo-700 text-white shadow-xs"
+                    : "text-slate-700 hover:text-indigo-950 hover:bg-slate-200/70"
+                }`}
+                title="Chuyển sang chế độ xem lịch sử theo từng tháng"
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Xem Theo Tháng</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setTimeViewMode("week")}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-black text-xs transition-all cursor-pointer ${
+                  timeViewMode === "week"
+                    ? "bg-indigo-700 text-white shadow-xs"
+                    : "text-slate-700 hover:text-indigo-950 hover:bg-slate-200/70"
+                }`}
+                title="Chuyển sang chế độ xem lịch sử theo từng tuần"
+              >
+                <CalendarDays className="w-3.5 h-3.5" />
+                <span>Xem Theo Tuần</span>
+              </button>
+            </div>
+
             <button
               type="button"
               onClick={handleExportMonthExcel}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black text-xs shadow-xs transition-all cursor-pointer"
-              title="Xuất danh sách tất cả các buổi dạy trong tháng ra file Excel"
+              title={`Xuất danh sách tất cả các buổi dạy trong ${timeViewMode === "month" ? "tháng" : "tuần"} ra file Excel`}
             >
               <FileSpreadsheet className="w-3.5 h-3.5" />
-              <span>Xuất Sổ Giảng Dạy Excel</span>
+              <span>Xuất Excel ({timeViewMode === "month" ? "Tháng" : "Tuần"})</span>
             </button>
           </div>
         </div>
 
-        {/* MONTH SELECTOR & FILTER CONTROLS BAR */}
+        {/* TIME PERIOD SELECTOR & FILTER CONTROLS BAR */}
         <div className="mt-4 pt-4 border-t-2 border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          {/* Month Navigation Control */}
+          {/* Navigation Controls: Month or Week */}
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="inline-flex items-center bg-slate-100 p-1 rounded-xl border border-slate-300">
-              <button
-                type="button"
-                onClick={handlePrevMonth}
-                className="p-1.5 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-900 transition-colors cursor-pointer"
-                title="Tháng trước"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
+            {timeViewMode === "month" ? (
+              /* MONTH NAVIGATION CONTROLS */
+              <>
+                <div className="inline-flex items-center bg-slate-100 p-1 rounded-xl border border-slate-300">
+                  <button
+                    type="button"
+                    onClick={handlePrevMonth}
+                    className="p-1.5 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-900 transition-colors cursor-pointer"
+                    title="Tháng trước"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
 
-              <button
-                type="button"
-                onClick={handleCurrentMonth}
-                className="px-3 py-1 rounded-lg bg-white text-indigo-950 font-black text-xs shadow-2xs hover:bg-indigo-50 transition-colors cursor-pointer border border-slate-200"
-              >
-                Tháng Này
-              </button>
+                  <button
+                    type="button"
+                    onClick={handleCurrentMonth}
+                    className="px-3 py-1 rounded-lg bg-white text-indigo-950 font-black text-xs shadow-2xs hover:bg-indigo-50 transition-colors cursor-pointer border border-slate-200"
+                  >
+                    Tháng Này
+                  </button>
 
-              <button
-                type="button"
-                onClick={handleNextMonth}
-                className="p-1.5 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-900 transition-colors cursor-pointer"
-                title="Tháng tiếp theo"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
+                  <button
+                    type="button"
+                    onClick={handleNextMonth}
+                    className="p-1.5 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-900 transition-colors cursor-pointer"
+                    title="Tháng tiếp theo"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
 
-            {/* Native HTML5 Month input picker */}
-            <div className="flex items-center gap-2">
-              <input
-                type="month"
-                value={selectedMonth}
-                onChange={(e) => {
-                  if (e.target.value) {
-                    setSelectedMonth(e.target.value);
-                  }
-                }}
-                className="px-3 py-1 rounded-xl bg-white border-2 border-slate-300 hover:border-indigo-400 font-bold text-xs text-slate-800 outline-hidden cursor-pointer"
-                title="Chọn tháng bất kỳ để xem lịch sử dạy học"
-              />
+                {/* Native HTML5 Month input picker */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="month"
+                    value={selectedMonth}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setSelectedMonth(e.target.value);
+                      }
+                    }}
+                    className="px-3 py-1 rounded-xl bg-white border-2 border-slate-300 hover:border-indigo-400 font-bold text-xs text-slate-800 outline-hidden cursor-pointer"
+                    title="Chọn tháng bất kỳ để xem lịch sử dạy học"
+                  />
 
-              <div className="px-3 py-1 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-950 font-black text-xs flex items-center gap-1.5">
-                <CalendarDays className="w-3.5 h-3.5 text-indigo-600" />
-                <span>{formatMonthDisplay(selectedMonth)}</span>
-              </div>
-            </div>
+                  <div className="px-3 py-1 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-950 font-black text-xs flex items-center gap-1.5">
+                    <CalendarDays className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>{formatMonthDisplay(selectedMonth)}</span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              /* WEEK NAVIGATION CONTROLS */
+              <>
+                <div className="inline-flex items-center bg-slate-100 p-1 rounded-xl border border-slate-300">
+                  <button
+                    type="button"
+                    onClick={handlePrevWeek}
+                    className="p-1.5 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-900 transition-colors cursor-pointer"
+                    title="Tuần trước"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCurrentWeek}
+                    className="px-3 py-1 rounded-lg bg-white text-indigo-950 font-black text-xs shadow-2xs hover:bg-indigo-50 transition-colors cursor-pointer border border-slate-200"
+                  >
+                    Tuần Này
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleNextWeek}
+                    className="p-1.5 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-900 transition-colors cursor-pointer"
+                    title="Tuần tiếp theo"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Date picker to jump to any date/week */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={selectedWeekDate}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setSelectedWeekDate(e.target.value);
+                      }
+                    }}
+                    className="px-3 py-1 rounded-xl bg-white border-2 border-slate-300 hover:border-indigo-400 font-bold text-xs text-slate-800 outline-hidden cursor-pointer"
+                    title="Chọn ngày bất kỳ để xem tuần tương ứng"
+                  />
+
+                  <div className="px-3 py-1 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-950 font-black text-xs flex items-center gap-1.5">
+                    <CalendarDays className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>{weekInfo.label}</span>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Quick Filters */}
@@ -567,7 +786,7 @@ export const TeachingHistorySection: React.FC<TeachingHistorySectionProps> = ({
         </div>
       </div>
 
-      {/* MONTHLY SUMMARY METRICS CARDS */}
+      {/* SUMMARY METRICS CARDS */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="bg-white rounded-2xl p-4 border-2 border-slate-300 shadow-xs flex items-center gap-3">
           <div className="w-11 h-11 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-black shrink-0 border border-indigo-200">
@@ -578,7 +797,7 @@ export const TeachingHistorySection: React.FC<TeachingHistorySectionProps> = ({
               {monthStats.totalSessions}
             </div>
             <div className="text-[11px] font-bold text-slate-500">
-              Tổng Buổi Dạy ({formatMonthDisplay(selectedMonth)})
+              Tổng Buổi Dạy ({periodLabel})
             </div>
           </div>
         </div>
@@ -630,7 +849,7 @@ export const TeachingHistorySection: React.FC<TeachingHistorySectionProps> = ({
       <div className="flex items-center justify-between gap-2 px-1 text-xs">
         <div className="text-slate-600 font-bold">
           Hiển thị <strong>{monthTeachingSessions.length}</strong> buổi học trong{" "}
-          <strong>{formatMonthDisplay(selectedMonth)}</strong>
+          <strong>{periodLabel}</strong>
         </div>
 
         <div className="flex items-center gap-2">
@@ -666,88 +885,93 @@ export const TeachingHistorySection: React.FC<TeachingHistorySectionProps> = ({
             <History className="w-7 h-7" />
           </div>
           <h3 className="text-base font-black text-slate-900">
-            Chưa có lịch sử buổi dạy trong {formatMonthDisplay(selectedMonth)}
+            Chưa có lịch sử buổi dạy trong {periodLabel}
           </h3>
           <p className="text-xs text-slate-500 max-w-md mx-auto font-medium">
-            Thầy/Cô có thể chuyển sang các tháng khác bằng nút chuyển tháng ở trên hoặc thêm các buổi học trong bảng Thời khóa biểu.
+            {timeViewMode === "month"
+              ? "Thầy/Cô có thể chuyển sang các tháng khác bằng nút chuyển tháng ở trên hoặc chuyển sang Xem Theo Tuần."
+              : "Thầy/Cô có thể chuyển sang các tuần khác bằng nút chuyển tuần ở trên hoặc chuyển sang Xem Theo Tháng."}
           </p>
           <button
             type="button"
-            onClick={handleCurrentMonth}
+            onClick={timeViewMode === "month" ? handleCurrentMonth : handleCurrentWeek}
             className="px-4 py-2 rounded-xl bg-indigo-700 text-white font-black text-xs shadow-md hover:bg-indigo-800 transition-all cursor-pointer inline-flex items-center gap-1.5"
           >
             <Calendar className="w-4 h-4" />
-            <span>Quay về tháng hiện tại</span>
+            <span>Quay về {timeViewMode === "month" ? "tháng hiện tại" : "tuần hiện tại"}</span>
           </button>
         </div>
       ) : (
-        <div className="space-y-3.5">
+        <div className="space-y-4">
           {monthTeachingSessions.map((session, index) => {
             const shiftInfo = getShiftBadge(session.shiftId);
+            const classTheme = getClassTheme(session.className);
             const isExpanded = expandedSlotIds.has(session.id);
             const isCompleted = session.status === "completed" || session.hasReport;
 
             return (
               <div
                 key={session.id}
-                className="bg-white rounded-3xl border-2 border-slate-300 shadow-sm overflow-hidden hover:border-indigo-400 transition-all"
+                className={`rounded-2xl sm:rounded-3xl border-2 border-amber-300/90 shadow-lg hover:shadow-2xl hover:-translate-y-0.5 transition-all overflow-hidden border-l-[8px] ${classTheme.borderLeft} bg-amber-50/40 backdrop-blur-xs ${
+                  isExpanded ? "ring-3 ring-amber-400/50 shadow-xl" : ""
+                }`}
               >
-                {/* Session Main Header Summary Row */}
-                <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-50/70 border-b border-slate-200">
-                  <div className="flex items-start sm:items-center gap-3 flex-wrap">
+                {/* Session Main Header Summary Row - Elevated, Warm Tinted & High-Contrast */}
+                <div className="p-3.5 sm:p-4.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-gradient-to-r from-amber-100/90 via-amber-50/80 to-amber-100/40 border-b border-amber-200">
+                  <div className="flex items-center gap-2.5 flex-wrap">
                     {/* Index & Date Badge */}
-                    <div className="flex items-center gap-2">
-                      <span className="w-7 h-7 rounded-xl bg-indigo-900 text-white font-black text-xs flex items-center justify-center shrink-0">
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-orange-600 text-white font-black text-base sm:text-lg flex items-center justify-center shrink-0 shadow-md border border-orange-700">
                         {index + 1}
                       </span>
-                      <div className="px-3 py-1 rounded-xl bg-white border-2 border-slate-300 font-black text-xs text-slate-900 flex items-center gap-1.5 shadow-2xs">
-                        <Calendar className="w-3.5 h-3.5 text-indigo-700" />
+                      <div className="px-4 py-2 sm:px-4.5 sm:py-2 rounded-2xl bg-white border-2 border-amber-300 font-black text-sm sm:text-base text-slate-950 flex items-center gap-2 shadow-xs">
+                        <Calendar className="w-5 h-5 text-indigo-700 shrink-0" />
                         <span>{formatFullDateVN(session.date)}</span>
                       </div>
                     </div>
 
                     {/* Shift Badge */}
                     <div
-                      className={`px-3 py-1 rounded-xl border font-black text-xs flex items-center gap-1.5 ${shiftInfo.badge}`}
+                      className={`px-4 py-2 sm:px-4.5 sm:py-2 rounded-2xl border-2 font-black text-sm sm:text-base flex items-center gap-2 shadow-xs ${shiftInfo.badge}`}
                     >
-                      <Clock className="w-3.5 h-3.5" />
+                      <Clock className="w-5 h-5 shrink-0" />
                       <span>
                         {shiftInfo.period}: {shiftInfo.name} ({shiftInfo.time})
                       </span>
                     </div>
 
-                    {/* Class Name Badge */}
-                    <div className="px-3 py-1 rounded-xl bg-blue-700 text-white font-black text-xs shadow-xs">
+                    {/* Class Name Badge with Vibrant Custom Color */}
+                    <div className={`px-4.5 py-2 sm:px-5 sm:py-2 rounded-2xl font-black text-sm sm:text-base shadow-xs text-white ${classTheme.badge}`}>
                       {session.className}
                     </div>
 
                     {/* Report Status Badge */}
                     {session.hasReport ? (
-                      <span className="px-2.5 py-0.5 rounded-xl bg-emerald-100 text-emerald-950 border border-emerald-300 font-black text-[11px] flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span className="px-4 py-2 sm:px-4.5 sm:py-2 rounded-2xl bg-emerald-100 text-emerald-950 border-2 border-emerald-300 font-black text-sm sm:text-base flex items-center gap-2 shadow-xs">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-700 shrink-0" />
                         {session.report?.status === "approved"
-                          ? "Báo Cáo Đã Duyệt"
-                          : "Đã Nộp Báo Cáo"}
+                          ? "Đã Duyệt Báo Cáo"
+                          : "Đã Có Báo Cáo"}
                       </span>
                     ) : (
-                      <span className="px-2.5 py-0.5 rounded-xl bg-amber-100 text-amber-950 border border-amber-300 font-black text-[11px] flex items-center gap-1">
-                        <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                      <span className="px-4 py-2 sm:px-4.5 sm:py-2 rounded-2xl bg-amber-200/90 text-amber-950 border-2 border-amber-400 font-black text-sm sm:text-base flex items-center gap-2 shadow-xs">
+                        <AlertCircle className="w-5 h-5 text-amber-800 shrink-0" />
                         Chưa Lập Báo Cáo
                       </span>
                     )}
                   </div>
 
-                  {/* Right side buttons */}
-                  <div className="flex items-center gap-2 flex-wrap">
+                  {/* Right side clean actions */}
+                  <div className="flex items-center gap-2 flex-wrap shrink-0">
                     {/* View report button if exists */}
                     {session.report && (
                       <button
                         type="button"
                         onClick={() => setViewingReport(session.report || null)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-950 font-black text-xs border border-emerald-300 shadow-2xs transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs sm:text-sm shadow-xs transition-all cursor-pointer"
                         title="Xem báo cáo buổi học hoàn chỉnh"
                       >
-                        <FileText className="w-3.5 h-3.5 text-emerald-700" />
+                        <FileText className="w-4 h-4 shrink-0" />
                         <span>Xem Báo Cáo</span>
                       </button>
                     )}
@@ -766,22 +990,10 @@ export const TeachingHistorySection: React.FC<TeachingHistorySectionProps> = ({
                             homeworkAssigned: session.homework,
                           })
                         }
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-black text-xs shadow-xs transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl bg-blue-700 hover:bg-blue-800 text-white font-black text-xs sm:text-sm shadow-xs transition-all cursor-pointer"
                       >
-                        <FileText className="w-3.5 h-3.5" />
+                        <FileText className="w-4 h-4 shrink-0" />
                         <span>+ Lập Báo Cáo</span>
-                      </button>
-                    )}
-
-                    {/* Open Slot Detail in Modal */}
-                    {onOpenSlotDetail && (
-                      <button
-                        type="button"
-                        onClick={() => onOpenSlotDetail(session)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-800 font-black text-xs border border-slate-300 shadow-2xs transition-all cursor-pointer"
-                      >
-                        <Edit3 className="w-3.5 h-3.5 text-slate-600" />
-                        <span>Chi Tiết</span>
                       </button>
                     )}
 
@@ -789,30 +1001,30 @@ export const TeachingHistorySection: React.FC<TeachingHistorySectionProps> = ({
                     <button
                       type="button"
                       onClick={() => toggleExpand(session.id)}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer border ${
+                      className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl text-xs sm:text-sm font-black transition-all cursor-pointer border-2 ${
                         isExpanded
-                          ? "bg-indigo-50 border-indigo-300 text-indigo-900 shadow-xs"
-                          : "bg-white border-slate-300 text-slate-700 hover:bg-slate-50 shadow-2xs"
+                          ? "bg-indigo-600 text-white border-indigo-700 shadow-sm"
+                          : "bg-white border-amber-300 text-slate-800 hover:bg-amber-100/50 shadow-xs"
                       }`}
-                      title={isExpanded ? "Thu gọn bớt thông tin" : "Mở rộng chi tiết tiến độ & BTVN"}
+                      title={isExpanded ? "Thu gọn bớt thông tin" : "Mở xem chi tiết tiến độ, BTVN & chuyên đề"}
                     >
                       <span>{isExpanded ? "Thu gọn" : "Chi tiết"}</span>
                       {isExpanded ? (
-                        <ChevronUp className="w-3.5 h-3.5" />
+                        <ChevronUp className="w-4 h-4 shrink-0" />
                       ) : (
-                        <ChevronDown className="w-3.5 h-3.5" />
+                        <ChevronDown className="w-4 h-4 shrink-0" />
                       )}
                     </button>
                   </div>
                 </div>
 
-                {/* Session Compact Summary Bar (Always Visible, Concise & Clean) */}
-                <div className="p-3.5 sm:p-4 bg-white space-y-2.5">
-                  {/* Topic Line & Quick Highlights */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                {/* Session Minimalist Body Row with Warm 30% Golden/Amber Tint */}
+                <div className="p-3.5 sm:p-4.5 bg-amber-50/30 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    {/* Lesson Topic */}
                     <div className="flex items-center gap-2 flex-wrap">
-                      <div className="flex items-center gap-1 text-[11px] font-black text-indigo-700 uppercase tracking-wider">
-                        <BookOpen className="w-3.5 h-3.5 shrink-0" />
+                      <div className="flex items-center gap-1 text-xs font-black text-indigo-800 uppercase tracking-wider">
+                        <BookOpen className="w-4 h-4 shrink-0 text-indigo-700" />
                         <span>Bài học:</span>
                       </div>
                       <span className="text-sm sm:text-base font-black text-slate-950">
@@ -820,48 +1032,30 @@ export const TeachingHistorySection: React.FC<TeachingHistorySectionProps> = ({
                       </span>
                     </div>
 
-                    {/* Personnel Pill Tags */}
+                    {/* Personnel Info Badges */}
                     <div className="flex items-center gap-2 flex-wrap text-xs">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-100 text-slate-800 font-bold border border-slate-200">
+                      <span className="inline-flex items-center gap-1 px-3 py-1 rounded-xl bg-white text-slate-800 font-bold border border-amber-200 shadow-xs">
                         <span className="text-slate-500 font-normal">GV:</span>{" "}
                         <strong className="text-slate-900">{session.teacherName || "Thầy Thắng"}</strong>
                       </span>
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-blue-50 text-blue-900 font-bold border border-blue-200">
+                      <span className="inline-flex items-center gap-1 px-3 py-1 rounded-xl bg-blue-50 text-blue-900 font-bold border border-blue-200 shadow-xs">
                         <span className="text-blue-500 font-normal">TG:</span>{" "}
                         <strong className="text-blue-950">{session.assistantName || "Chưa phân công"}</strong>
                       </span>
                       {session.room && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-50 text-slate-700 font-bold border border-slate-200">
+                        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-xl bg-white text-slate-700 font-bold border border-amber-200 shadow-xs">
                           {session.room}
                         </span>
                       )}
                     </div>
                   </div>
 
-                  {/* Compact Quick Snippets if collapsed */}
-                  {!isExpanded && (
-                    <div className="flex items-center gap-2 flex-wrap text-xs pt-1 text-slate-600">
-                      {session.progressNote && (
-                        <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-50 text-amber-900 text-[11px] font-bold border border-amber-200 max-w-md truncate">
-                          <CheckCircle2 className="w-3 h-3 text-amber-700 shrink-0" />
-                          <span className="truncate">Tiến độ: {session.progressNote}</span>
-                        </div>
-                      )}
-                      {session.homework && (
-                        <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-blue-50 text-blue-900 text-[11px] font-bold border border-blue-200 max-w-md truncate">
-                          <BookOpen className="w-3 h-3 text-blue-700 shrink-0" />
-                          <span className="truncate">BTVN: {session.homework}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Expandable Deep Details (Only shown when expanded) */}
+                  {/* Expandable Deep Details (Only shown when 'Chi tiết' is clicked) */}
                   {isExpanded && (
-                    <div className="pt-3 border-t border-slate-200 space-y-3 animate-in fade-in duration-200">
+                    <div className="pt-3.5 border-t border-slate-200 space-y-3 animate-in fade-in duration-200">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {/* Progress Note Box */}
-                        <div className="p-3.5 rounded-2xl bg-amber-50/90 border border-amber-300 space-y-1">
+                        <div className="p-3.5 rounded-2xl bg-amber-50/90 border border-amber-300 space-y-1 shadow-2xs">
                           <div className="flex items-center gap-1.5 text-xs font-black text-amber-950 uppercase">
                             <CheckCircle2 className="w-4 h-4 text-amber-700" />
                             <span>Tiến Độ Đã Học Thực Tế:</span>
@@ -872,7 +1066,7 @@ export const TeachingHistorySection: React.FC<TeachingHistorySectionProps> = ({
                         </div>
 
                         {/* Homework Box */}
-                        <div className="p-3.5 rounded-2xl bg-blue-50/90 border border-blue-300 space-y-1">
+                        <div className="p-3.5 rounded-2xl bg-blue-50/90 border border-blue-300 space-y-1 shadow-2xs">
                           <div className="flex items-center justify-between flex-wrap gap-1.5">
                             <div className="flex items-center gap-1.5 text-xs font-black text-blue-950 uppercase">
                               <BookOpen className="w-4 h-4 text-blue-700" />
@@ -892,7 +1086,7 @@ export const TeachingHistorySection: React.FC<TeachingHistorySectionProps> = ({
 
                       {/* Full detailed lesson content */}
                       {session.lessonContent && (
-                        <div className="space-y-1.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                        <div className="space-y-1.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
                           <div className="text-xs font-black text-slate-800 uppercase flex items-center gap-1.5">
                             <Layers className="w-3.5 h-3.5 text-slate-600" />
                             <span>Nội Dung Lý Thuyết & Dạng Bài Đã Giảng:</span>
@@ -913,7 +1107,7 @@ export const TeachingHistorySection: React.FC<TeachingHistorySectionProps> = ({
 
                       {/* Attached Report Stats Snapshot */}
                       {session.report && session.report.attendanceStats && (
-                        <div className="bg-emerald-50/70 p-3.5 rounded-2xl border border-emerald-200 space-y-2">
+                        <div className="bg-emerald-50/80 p-3.5 rounded-2xl border border-emerald-200 space-y-2 shadow-2xs">
                           <div className="flex items-center justify-between flex-wrap gap-1">
                             <span className="text-xs font-black text-emerald-950 uppercase flex items-center gap-1.5">
                               <UserCheck className="w-3.5 h-3.5 text-emerald-700" />
@@ -949,6 +1143,20 @@ export const TeachingHistorySection: React.FC<TeachingHistorySectionProps> = ({
                               <div className="text-[10px] font-bold text-slate-500">Không phép</div>
                             </div>
                           </div>
+                        </div>
+                      )}
+
+                      {/* Footer Actions inside Expanded drawer */}
+                      {onOpenSlotDetail && (
+                        <div className="pt-2 flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => onOpenSlotDetail(session)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs border border-slate-300 shadow-2xs transition-all cursor-pointer"
+                          >
+                            <Edit3 className="w-3.5 h-3.5 text-slate-600" />
+                            <span>Chỉnh sửa thông tin buổi học</span>
+                          </button>
                         </div>
                       )}
                     </div>

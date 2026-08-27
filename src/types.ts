@@ -301,7 +301,12 @@ export interface ClubSettings {
     isConnected: boolean;
     email?: string;
     connectedAt?: string;
+    lastSyncAt?: string;
+    lastSyncStatus?: string;
+    lastSyncItemCount?: number;
     autoSync?: boolean;
     folderName?: string;
+    scriptWebhookUrl?: string;
+    driveFolderUrl?: string;
   };
 }

@@ -596,6 +596,143 @@ Thầy Thắng và đội ngũ trợ giảng sẽ tiếp tục bám sát từng 
     }
   });
 
+  // ==========================================
+  // GOOGLE DRIVE SYNC BACKEND PROXY ENDPOINTS
+  // ==========================================
+  app.post("/api/gdrive/test", async (req, res) => {
+    try {
+      const { webhookUrl } = req.body;
+      if (!webhookUrl || typeof webhookUrl !== "string" || !webhookUrl.startsWith("http")) {
+        return res.status(400).json({
+          success: false,
+          error: "Vui lòng nhập đường dẫn Webhook hợp lệ (bắt đầu bằng https://script.google.com/...)",
+        });
+      }
+
+      const testPayload = {
+        action: "test_connection",
+        timestamp: new Date().toLocaleString("vi-VN"),
+        testMessage: "Kiểm tra kết nối CLB Toán Thầy Thắng với Google Drive",
+      };
+
+      const response = await fetch(webhookUrl.trim(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8",
+        },
+        body: JSON.stringify(testPayload),
+        redirect: "follow",
+      });
+
+      const responseText = await response.text();
+
+      // Check if Google returned a Google Accounts login HTML page (meaning Anyone access is not set)
+      if (
+        responseText.includes("<html") &&
+        (responseText.includes("accounts.google.com") ||
+          responseText.includes("Sign in - Google Accounts") ||
+          responseText.includes("Google Drive - Unauthorized"))
+      ) {
+        return res.json({
+          success: false,
+          needsAuthAccess: true,
+          error:
+            "Google Apps Script yêu cầu đăng nhập: Bạn cần chọn quyền 'Ai có quyền truy cập (Who has access)' là 'Bất kỳ ai (Anyone)' khi Triển khai (Deploy) để ứng dụng có thể gửi dữ liệu tự động.",
+        });
+      }
+
+      let parsedJson: any = null;
+      try {
+        parsedJson = JSON.parse(responseText);
+      } catch (e) {
+        // Not strict JSON
+      }
+
+      if (parsedJson && parsedJson.status === "error") {
+        return res.json({
+          success: false,
+          error: `Google Apps Script báo lỗi: ${parsedJson.error || "Không xác định"}`,
+          details: parsedJson,
+        });
+      }
+
+      return res.json({
+        success: true,
+        message: "Kết nối thành công tới Google Apps Script & Google Drive!",
+        details: parsedJson || responseText.slice(0, 200),
+      });
+    } catch (err: any) {
+      console.error("GDrive test error:", err);
+      return res.status(500).json({
+        success: false,
+        error: `Lỗi kết nối tới Webhook: ${err.message || "Không phản hồi"}`,
+      });
+    }
+  });
+
+  app.post("/api/gdrive/sync", async (req, res) => {
+    try {
+      const { webhookUrl, payload } = req.body;
+      if (!webhookUrl || typeof webhookUrl !== "string" || !webhookUrl.startsWith("http")) {
+        return res.status(400).json({
+          success: false,
+          error: "Vui lòng cấu hình Webhook URL trong cài đặt.",
+        });
+      }
+
+      const response = await fetch(webhookUrl.trim(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8",
+        },
+        body: JSON.stringify(payload),
+        redirect: "follow",
+      });
+
+      const responseText = await response.text();
+
+      if (
+        responseText.includes("<html") &&
+        (responseText.includes("accounts.google.com") ||
+          responseText.includes("Sign in - Google Accounts"))
+      ) {
+        return res.json({
+          success: false,
+          needsAuthAccess: true,
+          error:
+            "Chưa cấp quyền Anyone: Bạn cần vào Apps Script > Deploy > Chọn 'Ai có quyền truy cập' = 'Bất kỳ ai (Anyone)'.",
+        });
+      }
+
+      let parsedJson: any = null;
+      try {
+        parsedJson = JSON.parse(responseText);
+      } catch (e) {}
+
+      if (parsedJson && parsedJson.status === "error") {
+        return res.json({
+          success: false,
+          error: `Google Apps Script báo lỗi: ${parsedJson.error}`,
+          details: parsedJson,
+        });
+      }
+
+      return res.json({
+        success: true,
+        message: "Đã tải và lưu thành công toàn bộ dữ liệu vào thư mục Google Drive!",
+        fileId: parsedJson?.fileId,
+        url: parsedJson?.url,
+        details: parsedJson,
+      });
+    } catch (err: any) {
+      console.error("GDrive sync error:", err);
+      return res.status(500).json({
+        success: false,
+        error: `Lỗi kết nối Webhook: ${err.message}`,
+      });
+    }
+  });
+
   // Vite middleware in dev or static files in production
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");

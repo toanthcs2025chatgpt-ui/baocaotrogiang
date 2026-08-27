@@ -151,7 +151,9 @@ export const ReportListView: React.FC<ReportListViewProps> = ({
         const isOwner =
           r.assistantId === currentUser.id ||
           r.assistantId === currentUser.assistantId ||
+          (r.assistantIds && (r.assistantIds.includes(currentUser.id) || (currentUser.assistantId && r.assistantIds.includes(currentUser.assistantId)))) ||
           (currentUser.name && r.assistantName?.toLowerCase().includes(currentUser.name.toLowerCase().replace("trợ giảng ", "").trim())) ||
+          (currentUser.name && r.assistantNames?.some((an) => an.toLowerCase().includes(currentUser.name.toLowerCase().replace("trợ giảng ", "").trim()))) ||
           (currentUser.email && r.assistantId && assistants.find((a) => a.email === currentUser.email)?.id === r.assistantId);
         if (!isOwner) return false;
       }
