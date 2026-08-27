@@ -58,6 +58,8 @@ import {
   FeedbackPersona,
 } from "../types";
 import { storageService } from "../services/storage";
+import { assistantReportService } from "../services/assistantReportService";
+import { sessionService } from "../services/sessionService";
 import { aiService } from "../services/ai";
 import {
   FEEDBACK_CRITERIA,
@@ -1221,7 +1223,7 @@ export const CreateReportView: React.FC<CreateReportViewProps> = ({
     });
   };
 
-  const handleSaveReport = (targetStatus: "draft" | "submitted" | "approved") => {
+  const handleSaveReport = async (targetStatus: "draft" | "submitted" | "approved") => {
     if (!lessonContent.trim()) {
       setFeedbackToast({
         type: "error",
@@ -1240,6 +1242,23 @@ export const CreateReportView: React.FC<CreateReportViewProps> = ({
     const currentClass = classes.find((c) => c.id === classId);
     const currentAssistant = assistants.find((a) => a.id === assistantId);
     const nowStr = new Date().toISOString().replace("T", " ").slice(0, 16);
+
+    // Kiểm tra trùng lặp báo cáo (Cùng ngày, ca, lớp)
+    const existingDuplicate = await assistantReportService.checkDuplicateReport(
+      date,
+      shift,
+      classId,
+      editingReport?.id
+    );
+
+    if (existingDuplicate && !editingReport) {
+      const confirmOverwrite = window.confirm(
+        `⚠️ Cảnh báo trùng lặp báo cáo:\nĐã có báo cáo cho lớp "${currentClass?.name}" vào ${date} (${shift}) tạo bởi ${existingDuplicate.assistantName}.\n\nBạn có muốn tiếp tục lưu và ghi đè báo cáo này không?`
+      );
+      if (!confirmOverwrite) {
+        return;
+      }
+    }
 
     const presentCount = studentRows.filter((s) => s.attendance === "present").length;
     const lateCount = studentRows.filter((s) => s.attendance === "late").length;
@@ -1289,17 +1308,18 @@ export const CreateReportView: React.FC<CreateReportViewProps> = ({
       updatedAt: nowStr,
     };
 
-    storageService.saveReport(newReport);
+    // Save to Firestore Realtime ecosystem and local cache
+    await assistantReportService.saveAssistantReport(newReport);
     storageService.clearReportDraft();
 
     setFeedbackToast({
       type: "success",
       message:
         targetStatus === "approved"
-          ? "🎉 Đã duyệt báo cáo buổi học thành công! Trợ giảng đã nhận được thông báo xác nhận."
+          ? "🎉 Đã duyệt và đồng bộ báo cáo buổi học lên Firebase thành công!"
           : targetStatus === "submitted"
-          ? "📤 Đã gửi báo cáo cho Giáo viên duyệt thành công! Bạn sẽ nhận được thông báo xác nhận ngay khi Thầy phê duyệt."
-          : "💾 Đã lưu bản nháp báo cáo thành công!",
+          ? "📤 Đã gửi báo cáo realtime cho Giáo viên duyệt thành công!"
+          : "💾 Đã lưu bản nháp báo cáo lên hệ thống thành công!",
     });
 
     if (onReportSaved) {

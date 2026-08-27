@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { User, TabType, Report } from "./types";
+import { User, TabType, Report, ClassItem, Student } from "./types";
 import { storageService } from "./services/storage";
+import { classService } from "./services/classService";
+import { studentService } from "./services/studentService";
+import { assistantReportService } from "./services/assistantReportService";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { DashboardView } from "./components/DashboardView";
@@ -40,6 +43,30 @@ export function App() {
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [syncToastMsg, setSyncToastMsg] = useState<string | null>(null);
   const [dataVersion, setDataVersion] = useState(0);
+
+  // Real-time Firestore subscriptions for live multi-device updates (PC, Mobile, Tablet)
+  useEffect(() => {
+    // 1. Subscribe to classes
+    const unsubClasses = classService.subscribeClasses((updatedClasses) => {
+      setDataVersion((v) => v + 1);
+    });
+
+    // 2. Subscribe to students
+    const unsubStudents = studentService.subscribeStudents((updatedStudents) => {
+      setDataVersion((v) => v + 1);
+    });
+
+    // 3. Subscribe to assistantReports
+    const unsubReports = assistantReportService.subscribeAssistantReports((updatedReports) => {
+      setDataVersion((v) => v + 1);
+    }, currentUser);
+
+    return () => {
+      if (unsubClasses) unsubClasses();
+      if (unsubStudents) unsubStudents();
+      if (unsubReports) unsubReports();
+    };
+  }, [currentUser]);
 
   // Auto-sync on startup across devices (Google Drive & Cloud Store)
   useEffect(() => {

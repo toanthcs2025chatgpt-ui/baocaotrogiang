@@ -1,31 +1,104 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
-import { getFirestore, Firestore, collection, getDocs, doc, setDoc, deleteDoc } from "firebase/firestore";
-import { getAuth, Auth, signInWithEmailAndPassword, signOut } from "firebase/auth";
+import {
+  getFirestore,
+  Firestore,
+  collection,
+  doc,
+  setDoc,
+  getDoc,
+  getDocs,
+  deleteDoc,
+  query,
+  where,
+  orderBy,
+  onSnapshot,
+  enableIndexedDbPersistence,
+  Unsubscribe,
+  Timestamp,
+} from "firebase/firestore";
+import { getAuth, Auth } from "firebase/auth";
 import { storageService } from "./storage";
+import { FirestoreSyncStatus } from "../types";
 
 let app: FirebaseApp | null = null;
 let db: Firestore | null = null;
 let auth: Auth | null = null;
+let isPersistenceEnabled = false;
+
+// Global sync state listeners
+type SyncStatusListener = (status: FirestoreSyncStatus, msg?: string) => void;
+const syncListeners: Set<SyncStatusListener> = new Set();
+let currentSyncStatus: FirestoreSyncStatus = "synced";
+let currentSyncMessage: string = "Đã đồng bộ";
+
+export function getFirebaseConfig() {
+  const settings = storageService.getSettings();
+  if (settings.firebaseConfig && settings.firebaseConfig.projectId) {
+    return settings.firebaseConfig;
+  }
+
+  // Check if environment variables or default ecosystem project are present
+  const envProjectId = (import.meta as any).env?.VITE_FIREBASE_PROJECT_ID;
+  if (envProjectId) {
+    return {
+      apiKey: (import.meta as any).env?.VITE_FIREBASE_API_KEY || "",
+      authDomain: (import.meta as any).env?.VITE_FIREBASE_AUTH_DOMAIN || `${envProjectId}.firebaseapp.com`,
+      projectId: envProjectId,
+      storageBucket: (import.meta as any).env?.VITE_FIREBASE_STORAGE_BUCKET || `${envProjectId}.appspot.com`,
+      messagingSenderId: (import.meta as any).env?.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+      appId: (import.meta as any).env?.VITE_FIREBASE_APP_ID || "",
+    };
+  }
+
+  return null;
+}
 
 export function getFirebaseInstance() {
-  const settings = storageService.getSettings();
-  if (!settings.useFirebase || !settings.firebaseConfig || !settings.firebaseConfig.projectId) {
+  const config = getFirebaseConfig();
+  if (!config || !config.projectId) {
     return { app: null, db: null, auth: null, isConfigured: false };
   }
 
   try {
     if (!getApps().length) {
-      app = initializeApp(settings.firebaseConfig);
+      app = initializeApp(config);
     } else {
       app = getApp();
     }
     db = getFirestore(app);
     auth = getAuth(app);
+
+    // Enable Offline Persistence for PWA / Real-time multi-device
+    if (typeof window !== "undefined" && !isPersistenceEnabled) {
+      isPersistenceEnabled = true;
+      enableIndexedDbPersistence(db).catch((err) => {
+        if (err.code === "failed-precondition") {
+          console.warn("Firestore offline persistence: multiple tabs open");
+        } else if (err.code === "unimplemented") {
+          console.warn("Firestore offline persistence: browser does not support IndexedDB");
+        }
+      });
+    }
+
     return { app, db, auth, isConfigured: true };
   } catch (error) {
-    console.error("Firebase init error:", error);
+    console.error("Firebase initialization error:", error);
     return { app: null, db: null, auth: null, isConfigured: false, error };
   }
+}
+
+export function notifySyncStatus(status: FirestoreSyncStatus, msg?: string) {
+  currentSyncStatus = status;
+  currentSyncMessage = msg || (status === "synced" ? "Đã đồng bộ" : status === "saving" ? "Đang lưu dữ liệu" : "Mất kết nối");
+  syncListeners.forEach((fn) => fn(status, currentSyncMessage));
+}
+
+export function onSyncStatusChange(fn: SyncStatusListener): () => void {
+  syncListeners.add(fn);
+  fn(currentSyncStatus, currentSyncMessage);
+  return () => {
+    syncListeners.delete(fn);
+  };
 }
 
 export const firebaseService = {
@@ -34,58 +107,145 @@ export const firebaseService = {
     return !!isConfigured;
   },
 
-  async syncAllToFirebase(): Promise<{ success: boolean; message: string }> {
+  getDb(): Firestore | null {
+    const { db } = getFirebaseInstance();
+    return db;
+  },
+
+  getAuth(): Auth | null {
+    const { auth } = getFirebaseInstance();
+    return auth;
+  },
+
+  // "Migrate dữ liệu cũ lên Firebase" - Full ecosystem migration
+  async migrateLocalDataToFirebase(): Promise<{
+    success: boolean;
+    message: string;
+    stats: {
+      usersCount: number;
+      classesCount: number;
+      studentsCount: number;
+      reportsCount: number;
+      sessionsCount: number;
+    };
+  }> {
     const { db, isConfigured } = getFirebaseInstance();
     if (!isConfigured || !db) {
-      throw new Error("Chưa cấu hình Firebase hoặc chưa bật chế độ Firebase.");
+      throw new Error("Chưa cấu hình Firebase Project. Vui lòng nhập Firebase Config trong Cài đặt trước.");
     }
+
+    notifySyncStatus("saving", "Đang migrate dữ liệu cũ lên Cloud Firestore...");
 
     try {
       const classes = storageService.getClasses();
       const students = storageService.getStudents();
       const assistants = storageService.getAssistants();
+      const adminUser = storageService.getAdminUser();
       const reports = storageService.getReports();
       const masterSlots = storageService.getMasterTimetableSlots();
       const timetableSlots = storageService.getTimetableSlots();
       const settings = storageService.getSettings();
 
-      // Sync classes
+      // 1. Migrate Users collection (Admin + Assistants + Teachers)
+      const allUsers = [
+        adminUser,
+        ...assistants.map((a) => ({
+          id: a.id,
+          name: a.name,
+          email: a.email,
+          phone: a.phone,
+          role: "assistant",
+          username: a.username,
+          password: a.password,
+          avatar: a.avatar,
+          assignedClassIds: a.classes,
+          assistantId: a.id,
+        })),
+      ];
+
+      for (const u of allUsers) {
+        await setDoc(doc(db, "users", u.id), u, { merge: true });
+      }
+
+      // 2. Migrate Classes collection
       for (const c of classes) {
-        await setDoc(doc(db, "classes", c.id), c);
+        await setDoc(doc(db, "classes", c.id), c, { merge: true });
       }
-      // Sync students
+
+      // 3. Migrate Students collection
       for (const s of students) {
-        await setDoc(doc(db, "students", s.id), s);
+        await setDoc(doc(db, "students", s.id), s, { merge: true });
       }
-      // Sync assistants
-      for (const a of assistants) {
-        await setDoc(doc(db, "assistants", a.id), a);
-      }
-      // Sync reports
+
+      // 4. Migrate assistantReports & teachingSessions
+      let sessionsCount = 0;
       for (const r of reports) {
-        await setDoc(doc(db, "reports", r.id), r);
+        const sessionId = r.sessionId || `session_${r.date.replace(/[^a-zA-Z0-9]/g, "")}_${r.shift.replace(/[^a-zA-Z0-9]/g, "")}_${r.classId.replace(/[^a-zA-Z0-9]/g, "")}`;
+        
+        const fullReport = {
+          ...r,
+          sessionId,
+          teacherId: r.teacherId || "teacher_thaythang",
+          teacherName: r.teacherName || "Thầy Thắng",
+        };
+
+        // Save to assistantReports collection
+        await setDoc(doc(db, "assistantReports", r.id), fullReport, { merge: true });
+        // Save to backward-compatible reports collection
+        await setDoc(doc(db, "reports", r.id), fullReport, { merge: true });
+
+        // Save to teachingSessions collection
+        await setDoc(doc(db, "teachingSessions", sessionId), {
+          id: sessionId,
+          classId: r.classId,
+          className: r.className,
+          date: r.date,
+          shift: r.shift,
+          teacherId: r.teacherId || "teacher_thaythang",
+          teacherName: r.teacherName || "Thầy Thắng",
+          assistantId: r.assistantId,
+          assistantName: r.assistantName,
+          lessonContent: r.lessonContent,
+          assistantReportId: r.id,
+          homeworkAssigned: r.homeworkAssigned,
+          status: r.status === "approved" ? "completed" : "in_progress",
+          updatedAt: new Date().toISOString(),
+        }, { merge: true });
+        sessionsCount++;
       }
-      // Sync master timetable slots
+
+      // 5. Migrate timetable & master slots
       for (const m of masterSlots) {
-        await setDoc(doc(db, "master_timetable_slots", m.id), m);
+        await setDoc(doc(db, "master_timetable_slots", m.id), m, { merge: true });
       }
-      // Sync timetable slots
       for (const t of timetableSlots) {
-        await setDoc(doc(db, "timetable_slots", t.id), t);
+        await setDoc(doc(db, "timetable_slots", t.id), t, { merge: true });
       }
-      // Sync settings
-      await setDoc(doc(db, "settings", "global_config"), settings);
+
+      // 6. Global config
+      await setDoc(doc(db, "settings", "global_config"), settings, { merge: true });
+
+      notifySyncStatus("synced", "Migrate dữ liệu thành công lên Firebase!");
 
       return {
         success: true,
-        message: `Đã đồng bộ ${classes.length} lớp, ${students.length} học sinh, ${assistants.length} trợ giảng, ${reports.length} báo cáo và ${masterSlots.length + timetableSlots.length} ca lịch học lên Firestore thành công!`,
+        message: `Migrate thành công ${classes.length} lớp học, ${students.length} học sinh, ${allUsers.length} tài khoản, ${reports.length} báo cáo trợ giảng và ${sessionsCount} buổi học lên Firestore!`,
+        stats: {
+          usersCount: allUsers.length,
+          classesCount: classes.length,
+          studentsCount: students.length,
+          reportsCount: reports.length,
+          sessionsCount,
+        },
       };
-    } catch (error: any) {
-      console.error("Sync error:", error);
-      throw new Error(error.message || "Lỗi đồng bộ Firebase Firestore");
+    } catch (err: any) {
+      console.error("Migration error:", err);
+      notifySyncStatus("error", "Lỗi migrate: " + err.message);
+      throw new Error(err.message || "Lỗi trong quá trình migrate dữ liệu lên Firebase");
     }
   },
 
+  // Pull all data from Firestore into local cache
   async pullAllFromFirebase(): Promise<{ success: boolean; message: string }> {
     const { db, isConfigured } = getFirebaseInstance();
     if (!isConfigured || !db) {
@@ -98,7 +258,7 @@ export const firebaseService = {
       const classes: any[] = [];
       classSnap.forEach((doc) => classes.push(doc.data()));
       if (classes.length > 0) {
-        localStorage.setItem("thaythang_classes_v1", JSON.stringify(classes));
+        storageService.saveClasses(classes);
       }
 
       // Pull students
@@ -106,36 +266,20 @@ export const firebaseService = {
       const students: any[] = [];
       studentSnap.forEach((doc) => students.push(doc.data()));
       if (students.length > 0) {
-        localStorage.setItem("thaythang_students_v1", JSON.stringify(students));
+        storageService.saveStudents(students);
       }
 
-      // Pull reports
-      const repSnap = await getDocs(collection(db, "reports"));
+      // Pull assistantReports
+      const repSnap = await getDocs(collection(db, "assistantReports"));
       const reports: any[] = [];
       repSnap.forEach((doc) => reports.push(doc.data()));
       if (reports.length > 0) {
-        localStorage.setItem("thaythang_reports_v1", JSON.stringify(reports));
-      }
-
-      // Pull master timetable slots
-      const masterSnap = await getDocs(collection(db, "master_timetable_slots"));
-      const masterSlots: any[] = [];
-      masterSnap.forEach((doc) => masterSlots.push(doc.data()));
-      if (masterSlots.length > 0) {
-        localStorage.setItem("thaythang_master_timetable_slots_v2", JSON.stringify(masterSlots));
-      }
-
-      // Pull timetable slots
-      const timeSnap = await getDocs(collection(db, "timetable_slots"));
-      const timetableSlots: any[] = [];
-      timeSnap.forEach((doc) => timetableSlots.push(doc.data()));
-      if (timetableSlots.length > 0) {
-        localStorage.setItem("thaythang_timetable_slots_v2", JSON.stringify(timetableSlots));
+        storageService.saveReports(reports);
       }
 
       return {
         success: true,
-        message: `Đã tải toàn bộ dữ liệu từ Firestore thành công!`,
+        message: `Đã kéo về thành công ${classes.length} lớp, ${students.length} học sinh và ${reports.length} báo cáo từ Firebase!`,
       };
     } catch (error: any) {
       throw new Error(error.message || "Lỗi khi kéo dữ liệu từ Firebase");

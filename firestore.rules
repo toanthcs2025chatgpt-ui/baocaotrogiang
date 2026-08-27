@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check admin or authenticated user
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Shared collections in Thay Thang Math Club Ecosystem
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if true; // In development or allow authenticated admins
+    }
+
+    match /classes/{classId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    match /students/{studentId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Assistant Reports in shared ecosystem
+    match /assistantReports/{reportId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Backward-compatible reports
+    match /reports/{reportId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Teaching Sessions shared between Sổ Nhận Xét & Báo Cáo Trợ Giảng
+    match /teachingSessions/{sessionId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Timetable & Settings
+    match /master_timetable_slots/{slotId} {
+      allow read, write: if true;
+    }
+    match /timetable_slots/{slotId} {
+      allow read, write: if true;
+    }
+    match /settings/{docId} {
+      allow read, write: if true;
+    }
+  }
+}

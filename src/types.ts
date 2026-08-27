@@ -1,4 +1,4 @@
-export type UserRole = "admin" | "assistant";
+export type UserRole = "admin" | "teacher" | "assistant";
 
 export type TabType =
   | "dashboard"
@@ -210,12 +210,82 @@ export interface Report {
 
   students: StudentReportItem[];
   status: ReportStatus;
+  sessionId?: string; // Liên kết với teachingSessions/{sessionId} trong hệ sinh thái chung
+  teacherId?: string;
   notes?: string;
   approvedBy?: string;
   approvedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
+
+// Cấu trúc chuẩn theo đặc tả hệ sinh thái CLB Toán Thầy Thắng
+export interface AssistantReport {
+  id: string;
+  assistantId: string;
+  assistantName: string;
+  date: string;
+  shift: string;
+  classId: string;
+  className: string;
+  teacherId?: string;
+  teacherName: string;
+  sessionId: string; // teachingSessions/{sessionId}
+  attendanceData?: {
+    total: number;
+    present: number;
+    late: number;
+    excused: number;
+    unexcused: number;
+    students: StudentReportItem[];
+  };
+  homeworkData?: {
+    assigned?: string;
+    completedCount: number;
+    incompleteCount: number;
+    noneCount: number;
+    students: Array<{
+      studentId: string;
+      studentName: string;
+      homework: HomeworkStatus;
+      score?: number | null;
+      comment?: string;
+    }>;
+  };
+  absentStudents?: string[];
+  studentsNeedAttention?: Array<{
+    studentId: string;
+    studentName: string;
+    reason: string;
+  }>;
+  generalReport?: string;
+  issues?: string[];
+  status?: ReportStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TeachingSession {
+  id: string; // sessionId
+  classId: string;
+  className: string;
+  date: string; // YYYY-MM-DD
+  shift: string; // Shift name / time
+  teacherId?: string;
+  teacherName: string;
+  assistantId?: string;
+  assistantName?: string;
+  lessonTopic?: string;
+  lessonContent?: string;
+  teacherRemarks?: string; // Nhận xét của giáo viên (từ Web Sổ Nhận Xét Buổi Dạy)
+  assistantReportId?: string; // ID báo cáo trợ giảng
+  homeworkAssigned?: string;
+  status?: "scheduled" | "in_progress" | "completed" | "cancelled";
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type FirestoreSyncStatus = "synced" | "saving" | "offline" | "error";
 
 export interface AIStudentAnalysis {
   strengths: string[];

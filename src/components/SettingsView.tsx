@@ -296,8 +296,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setFirebaseSyncing(true);
     setFirebaseMessage(null);
     try {
-      const res = await firebaseService.syncAllToFirebase();
-      setFirebaseMessage(res.message);
+      const res = await firebaseService.migrateLocalDataToFirebase();
+      setFirebaseMessage(`✓ ${res.message}`);
+    } catch (e: any) {
+      setFirebaseMessage(`Lỗi: ${e.message}`);
+    } finally {
+      setFirebaseSyncing(false);
+    }
+  };
+
+  const handlePullFirebase = async () => {
+    setFirebaseSyncing(true);
+    setFirebaseMessage(null);
+    try {
+      const res = await firebaseService.pullAllFromFirebase();
+      setFirebaseMessage(`✓ ${res.message}`);
+      setTimeout(() => window.location.reload(), 1500);
     } catch (e: any) {
       setFirebaseMessage(`Lỗi: ${e.message}`);
     } finally {
@@ -717,15 +731,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
 
         {useFirebase && (
-          <div className="flex items-center gap-3 pt-2">
+          <div className="flex flex-wrap items-center gap-3 pt-2">
             <button
               type="button"
               onClick={handleSyncFirebase}
               disabled={firebaseSyncing}
-              className="px-4 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold flex items-center gap-1.5 transition-colors border border-amber-200 cursor-pointer"
+              className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-slate-950 text-xs font-black flex items-center gap-1.5 transition-colors border border-amber-600 shadow-sm cursor-pointer"
             >
               {firebaseSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-              <span>Đồng bộ toàn bộ dữ liệu lên Firestore</span>
+              <span>⚡ Migrate dữ liệu cũ lên Firebase</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handlePullFirebase}
+              disabled={firebaseSyncing}
+              className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center gap-1.5 transition-colors border border-slate-300 cursor-pointer"
+            >
+              {firebaseSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Cloud className="w-3.5 h-3.5 text-blue-600" />}
+              <span>Tải dữ liệu từ Firestore về máy</span>
             </button>
           </div>
         )}

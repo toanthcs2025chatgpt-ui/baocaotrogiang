@@ -22,8 +22,9 @@ import {
   Cloud,
   Settings,
 } from "lucide-react";
-import { User, Report, AppNotification } from "../types";
+import { User, Report, AppNotification, FirestoreSyncStatus } from "../types";
 import { storageService } from "../services/storage";
+import { onSyncStatusChange } from "../services/firebase";
 
 interface HeaderProps {
   currentUser: User;
@@ -55,6 +56,17 @@ export const Header: React.FC<HeaderProps> = ({
   const [notifications, setNotifications] = useState<AppNotification[]>(() =>
     storageService.getUserNotifications(currentUser)
   );
+  const [firestoreStatus, setFirestoreStatus] = useState<FirestoreSyncStatus>("synced");
+  const [firestoreMessage, setFirestoreMessage] = useState<string>("Đã đồng bộ");
+
+  // Subscribe to real-time sync status
+  useEffect(() => {
+    const unsub = onSyncStatusChange((status, msg) => {
+      setFirestoreStatus(status);
+      if (msg) setFirestoreMessage(msg);
+    });
+    return () => unsub();
+  }, []);
 
   const isAdmin = currentUser.role === "admin";
   const settings = storageService.getSettings();
@@ -145,11 +157,36 @@ export const Header: React.FC<HeaderProps> = ({
                   className={`hidden sm:inline-block text-[10px] uppercase font-black px-2 py-0.5 rounded-full shadow-xs ${
                     isAdmin
                       ? "bg-amber-400 text-slate-950"
+                      : currentUser.role === "teacher"
+                      ? "bg-emerald-400 text-slate-950"
                       : "bg-cyan-400 text-blue-950"
                   }`}
                 >
-                  {isAdmin ? "Quản Trị Viên" : "Trợ Giảng"}
+                  {isAdmin ? "Quản Trị Viên" : currentUser.role === "teacher" ? "Giáo Viên" : "Trợ Giảng"}
                 </span>
+
+                {/* Firestore Realtime Ecosystem Status Badge */}
+                <div
+                  title={`Firebase Firestore: ${firestoreMessage}`}
+                  className={`hidden md:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wide border shadow-xs transition-all ${
+                    firestoreStatus === "synced"
+                      ? "bg-emerald-950/80 text-emerald-300 border-emerald-500/60"
+                      : firestoreStatus === "saving"
+                      ? "bg-amber-950/80 text-amber-300 border-amber-500/60 animate-pulse"
+                      : "bg-rose-950/80 text-rose-300 border-rose-500/60"
+                  }`}
+                >
+                  <span className="text-xs leading-none">
+                    {firestoreStatus === "synced" ? "🟢" : firestoreStatus === "saving" ? "🟡" : "🔴"}
+                  </span>
+                  <span>
+                    {firestoreStatus === "synced"
+                      ? "Đã đồng bộ"
+                      : firestoreStatus === "saving"
+                      ? "Đang lưu dữ liệu"
+                      : "Mất kết nối"}
+                  </span>
+                </div>
               </div>
               <p className="text-[10px] sm:text-[11px] text-blue-200/90 hidden sm:block font-medium">
                 Học Toán Bằng Tư Duy – Bứt Phá Mọi Kỳ Thi

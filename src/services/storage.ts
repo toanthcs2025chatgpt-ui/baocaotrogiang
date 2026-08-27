@@ -988,6 +988,22 @@ const DEFAULT_REPORTS: Report[] = [
 
 // Helper functions with localStorage + fallback
 export const storageService = {
+  // Bulk save methods
+  saveClasses(classes: ClassItem[]): void {
+    localStorage.setItem(STORAGE_KEYS.CLASSES, JSON.stringify(classes));
+    this.triggerAutoSync();
+  },
+
+  saveStudents(students: Student[]): void {
+    localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(students));
+    this.triggerAutoSync();
+  },
+
+  saveReports(reports: Report[]): void {
+    localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(reports));
+    this.triggerAutoSync();
+  },
+
   // Admin user management
   getAdminUser(): User {
     try {

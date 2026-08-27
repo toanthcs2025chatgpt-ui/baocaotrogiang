@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { Report, User } from "../types";
 import { storageService } from "../services/storage";
+import { assistantReportService } from "../services/assistantReportService";
 import { exportUtils } from "../utils/exportUtils";
 import { ReportDetailModal } from "./ReportDetailModal";
 
@@ -104,7 +105,7 @@ export const ReportListView: React.FC<ReportListViewProps> = ({
     setReports(storageService.getReports());
   };
 
-  const handleApprove = (report: Report) => {
+  const handleApprove = async (report: Report) => {
     const updated: Report = {
       ...report,
       status: "approved",
@@ -112,14 +113,14 @@ export const ReportListView: React.FC<ReportListViewProps> = ({
       approvedAt: new Date().toISOString().replace("T", " ").slice(0, 16),
       updatedAt: new Date().toISOString().replace("T", " ").slice(0, 16),
     };
-    storageService.saveReport(updated);
+    await assistantReportService.saveAssistantReport(updated);
     reloadData();
     setSelectedReport(updated);
   };
 
-  const handleDelete = (reportId: string) => {
-    if (window.confirm("Bạn có chắc chắn muốn xóa vĩnh viễn báo cáo này?")) {
-      storageService.deleteReport(reportId);
+  const handleDelete = async (reportId: string) => {
+    if (window.confirm("Bạn có chắc chắn muốn xóa vĩnh viễn báo cáo này trên cả hệ thống Cloud?")) {
+      await assistantReportService.deleteAssistantReport(reportId);
       reloadData();
       if (selectedReport?.id === reportId) {
         setSelectedReport(null);
@@ -127,7 +128,7 @@ export const ReportListView: React.FC<ReportListViewProps> = ({
     }
   };
 
-  const handleDuplicate = (report: Report) => {
+  const handleDuplicate = async (report: Report) => {
     const duplicated: Report = {
       ...report,
       id: `rep_${Date.now()}`,
@@ -138,7 +139,7 @@ export const ReportListView: React.FC<ReportListViewProps> = ({
       createdAt: new Date().toISOString().replace("T", " ").slice(0, 16),
       updatedAt: new Date().toISOString().replace("T", " ").slice(0, 16),
     };
-    storageService.saveReport(duplicated);
+    await assistantReportService.saveAssistantReport(duplicated);
     reloadData();
     onEditReport(duplicated);
   };
