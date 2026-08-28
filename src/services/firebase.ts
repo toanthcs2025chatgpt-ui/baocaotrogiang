@@ -101,10 +101,49 @@ export function onSyncStatusChange(fn: SyncStatusListener): () => void {
   };
 }
 
+export function resetFirebaseInstance() {
+  app = null;
+  db = null;
+  auth = null;
+  isPersistenceEnabled = false;
+}
+
 export const firebaseService = {
   isConfigured(): boolean {
     const { isConfigured } = getFirebaseInstance();
     return !!isConfigured;
+  },
+
+  reset(): void {
+    resetFirebaseInstance();
+  },
+
+  async testConnection(): Promise<{ success: boolean; message: string }> {
+    resetFirebaseInstance();
+    const { db, isConfigured } = getFirebaseInstance();
+    if (!isConfigured || !db) {
+      throw new Error("Chưa nhập đủ Firebase Project ID và API Key.");
+    }
+    try {
+      const pingDoc = doc(db, "settings", "connection_ping");
+      await setDoc(pingDoc, {
+        lastPing: new Date().toISOString(),
+        client: "CLB Toán Thầy Thắng App",
+        status: "connected",
+      }, { merge: true });
+      const snap = await getDoc(pingDoc);
+      if (snap.exists()) {
+        return {
+          success: true,
+          message: "Kết nối thành công tới Firebase Cloud Firestore!",
+        };
+      } else {
+        throw new Error("Không thể xác thực bản ghi kiểm tra trên Firestore.");
+      }
+    } catch (err: any) {
+      console.error("Firestore test ping failed:", err);
+      throw new Error(err.message || "Không thể kết nối tới Firebase Firestore.");
+    }
   },
 
   getDb(): Firestore | null {

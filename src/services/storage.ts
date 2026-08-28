@@ -482,7 +482,15 @@ const DEFAULT_SETTINGS: ClubSettings = {
   address: "Số 18, Ngõ 120 Hoàng Quốc Việt, Cầu Giấy, Hà Nội",
   apiKeyList: [],
   activeApiKeyIndex: 0,
-  useFirebase: false,
+  useFirebase: true,
+  firebaseConfig: {
+    projectId: "bctg-408ca",
+    authDomain: "bctg-408ca.firebaseapp.com",
+    storageBucket: "bctg-408ca.appspot.com",
+    apiKey: "",
+    messagingSenderId: "",
+    appId: "",
+  },
   googleDriveConfig: {
     isConnected: true,
     email: "thangsinh2444@gmail.com",
@@ -1166,7 +1174,22 @@ export const storageService = {
   getSettings(): ClubSettings {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-      if (data) return JSON.parse(data);
+      if (data) {
+        const parsed: ClubSettings = JSON.parse(data);
+        if (!parsed.firebaseConfig || !parsed.firebaseConfig.projectId) {
+          parsed.firebaseConfig = {
+            projectId: "bctg-408ca",
+            authDomain: "bctg-408ca.firebaseapp.com",
+            storageBucket: "bctg-408ca.appspot.com",
+            apiKey: parsed.firebaseConfig?.apiKey || "",
+            messagingSenderId: parsed.firebaseConfig?.messagingSenderId || "",
+            appId: parsed.firebaseConfig?.appId || "",
+          };
+          parsed.useFirebase = true;
+          localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(parsed));
+        }
+        return parsed;
+      }
     } catch (e) {}
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(DEFAULT_SETTINGS));
     return DEFAULT_SETTINGS;
@@ -2134,20 +2157,6 @@ function doGet(e) {
   },
 
   // Push to Cloud Live: Syncs both to shared server cache and Google Drive
-  // Get or create unique persistent device identifier
-  getDeviceId(): string {
-    try {
-      let id = localStorage.getItem("TT_DEVICE_ID");
-      if (!id) {
-        id = `dev_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        localStorage.setItem("TT_DEVICE_ID", id);
-      }
-      return id;
-    } catch {
-      return "dev_default";
-    }
-  },
-
   async pushToCloudLive(options?: {
     forceDownload?: boolean;
     updatedBy?: string;
@@ -2330,6 +2339,68 @@ function doGet(e) {
       return {
         success: false,
         message: `Lỗi tải từ Google Drive: ${err.message}`,
+      };
+    }
+  },
+
+  // Smart Sync (Pulls if cloud has newer data, otherwise pushes local changes)
+  async smartSyncWithCloud(options?: { updatedBy?: string }): Promise<{
+    success: boolean;
+    action: "pulled" | "pushed" | "synced";
+    message: string;
+    totalItems: number;
+  }> {
+    try {
+      // 1. Check cloud version
+      const res = await fetch("/api/cloud-sync/version");
+      const meta = await res.json();
+
+      const localPayload = this.getBackupPayload();
+      const localItemsCount =
+        (localPayload.reports?.length || 0) +
+        (localPayload.students?.length || 0) +
+        (localPayload.classes?.length || 0) +
+        (localPayload.assistants?.length || 0) +
+        (localPayload.timetableSlots?.length || 0) +
+        (localPayload.masterTimetableSlots?.length || 0);
+
+      const localVersionStr = localStorage.getItem(STORAGE_KEYS.LAST_CLOUD_SYNC_VERSION);
+      const localVersion = localVersionStr ? parseInt(localVersionStr, 10) : 0;
+      const localSyncTime = localStorage.getItem(STORAGE_KEYS.LAST_CLOUD_SYNC_TIME);
+
+      if (meta.success && meta.hasData) {
+        // If cloud version is newer, or this device has never synced and cloud has data
+        if (
+          !localVersionStr ||
+          localVersion < meta.version ||
+          (meta.updatedAt && meta.updatedAt !== localSyncTime && (meta.totalItems || 0) >= localItemsCount)
+        ) {
+          const pullRes = await this.pullFromCloudLive();
+          if (pullRes.success) {
+            return {
+              success: true,
+              action: "pulled",
+              message: `Đã tải về và đồng bộ ${pullRes.totalItems || meta.totalItems || 0} mục dữ liệu mới nhất từ Đám mây!`,
+              totalItems: pullRes.totalItems || meta.totalItems || 0,
+            };
+          }
+        }
+      }
+
+      // Otherwise push local updates to cloud
+      const pushRes = await this.pushToCloudLive({ updatedBy: options?.updatedBy });
+      return {
+        success: pushRes.success,
+        action: "pushed",
+        message: `Đã lưu và đồng bộ an toàn ${pushRes.totalItems} mục lên Đám mây & Google Drive!`,
+        totalItems: pushRes.totalItems,
+      };
+    } catch (e: any) {
+      return {
+        success: false,
+        action: "synced",
+        message: `Lỗi đồng bộ: ${e.message}`,
+        totalItems: 0,
       };
     }
   },

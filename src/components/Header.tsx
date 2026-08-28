@@ -76,11 +76,10 @@ export const Header: React.FC<HeaderProps> = ({
     setDriveSyncing(true);
     setDriveSyncMsg(null);
     try {
-      const pushRes = await storageService.pushToCloudLive({ updatedBy: currentUser.name });
-      const pullRes = await storageService.pullFromCloudLive();
+      const syncRes = await storageService.smartSyncWithCloud({ updatedBy: currentUser.name });
       setDriveSyncing(false);
-      if (pushRes.success || pullRes.success) {
-        setDriveSyncMsg("Đã đồng bộ xong!");
+      if (syncRes.success) {
+        setDriveSyncMsg(syncRes.action === "pulled" ? "Đã tải dữ liệu mới nhất!" : "Đã đồng bộ lên đám mây!");
         setTimeout(() => setDriveSyncMsg(null), 3500);
       } else {
         setDriveSyncMsg("Lỗi kết nối đám mây!");

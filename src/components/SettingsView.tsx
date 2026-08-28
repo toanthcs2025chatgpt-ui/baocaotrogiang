@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   RefreshCw,
   AlertTriangle,
+  AlertCircle,
   Save,
   Check,
   Loader2,
@@ -155,14 +156,85 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [showAdminPass, setShowAdminPass] = useState(false);
   const [adminAccountSaved, setAdminAccountSaved] = useState(false);
 
-  // Form states for Firebase config
+  // Form states for Firebase config (Pre-filled with project bctg-408ca)
   const [fbApiKey, setFbApiKey] = useState(settings.firebaseConfig?.apiKey || "");
-  const [fbAuthDomain, setFbAuthDomain] = useState(settings.firebaseConfig?.authDomain || "");
-  const [fbProjectId, setFbProjectId] = useState(settings.firebaseConfig?.projectId || "");
-  const [fbStorageBucket, setFbStorageBucket] = useState(settings.firebaseConfig?.storageBucket || "");
+  const [fbAuthDomain, setFbAuthDomain] = useState(settings.firebaseConfig?.authDomain || "bctg-408ca.firebaseapp.com");
+  const [fbProjectId, setFbProjectId] = useState(settings.firebaseConfig?.projectId || "bctg-408ca");
+  const [fbStorageBucket, setFbStorageBucket] = useState(settings.firebaseConfig?.storageBucket || "bctg-408ca.appspot.com");
   const [fbMessagingSenderId, setFbMessagingSenderId] = useState(settings.firebaseConfig?.messagingSenderId || "");
   const [fbAppId, setFbAppId] = useState(settings.firebaseConfig?.appId || "");
-  const [useFirebase, setUseFirebase] = useState(settings.useFirebase || false);
+  const [useFirebase, setUseFirebase] = useState(settings.useFirebase ?? true);
+
+  const [testingFirebase, setTestingFirebase] = useState(false);
+  const [firebaseStatus, setFirebaseStatus] = useState<"idle" | "connected" | "error">(
+    settings.firebaseConfig?.apiKey && settings.useFirebase ? "connected" : "idle"
+  );
+  const [showFirebaseGuide, setShowFirebaseGuide] = useState(false);
+
+  // Auto fill domains when project ID changes
+  const handleProjectIdChange = (val: string) => {
+    const clean = val.trim();
+    setFbProjectId(clean);
+    if (clean) {
+      if (!fbAuthDomain || fbAuthDomain.endsWith(".firebaseapp.com")) {
+        setFbAuthDomain(`${clean}.firebaseapp.com`);
+      }
+      if (!fbStorageBucket || fbStorageBucket.endsWith(".appspot.com") || fbStorageBucket.endsWith(".firebasestorage.app")) {
+        setFbStorageBucket(`${clean}.appspot.com`);
+      }
+    }
+  };
+
+  const handleSaveAndTestFirebase = async () => {
+    if (!fbProjectId.trim() || !fbApiKey.trim()) {
+      setFirebaseMessage("⚠️ Vui lòng nhập tối thiểu Firebase Project ID và Firebase API Key.");
+      setFirebaseStatus("error");
+      return;
+    }
+
+    setTestingFirebase(true);
+    setFirebaseMessage("Đang kiểm tra kết nối tới Firebase Firestore...");
+    setFirebaseStatus("idle");
+
+    const updatedConfig = {
+      apiKey: fbApiKey.trim(),
+      authDomain: fbAuthDomain.trim() || `${fbProjectId.trim()}.firebaseapp.com`,
+      projectId: fbProjectId.trim(),
+      storageBucket: fbStorageBucket.trim() || `${fbProjectId.trim()}.appspot.com`,
+      messagingSenderId: fbMessagingSenderId.trim(),
+      appId: fbAppId.trim(),
+    };
+
+    const updated: ClubSettings = {
+      ...settings,
+      useFirebase: true,
+      firebaseConfig: updatedConfig,
+    };
+
+    setUseFirebase(true);
+    setSettings(updated);
+    storageService.saveSettings(updated);
+
+    try {
+      const res = await firebaseService.testConnection();
+      setFirebaseStatus("connected");
+      setFirebaseMessage(`✓ ${res.message}`);
+    } catch (err: any) {
+      setFirebaseStatus("error");
+      setFirebaseMessage(`❌ Lỗi kết nối Firestore: ${err.message}. Vui lòng kiểm tra lại Project ID, API Key hoặc quyền Firestore Rules.`);
+    } finally {
+      setTestingFirebase(false);
+    }
+  };
+
+  const handleQuickSetupDemoFirebase = () => {
+    setFbProjectId("thaythang-math-club");
+    setFbApiKey("AIzaSyB_demo_key_for_thaythang_club_2025");
+    setFbAuthDomain("thaythang-math-club.firebaseapp.com");
+    setFbStorageBucket("thaythang-math-club.appspot.com");
+    setUseFirebase(true);
+    setFirebaseMessage("ℹ️ Đã điền thông số mẫu. Bạn có thể thay bằng API Key từ Firebase Console của bạn.");
+  };
 
   // Club info
   const [clubName, setClubName] = useState(settings.clubName || "CLB TOÁN THẦY THẮNG");
@@ -651,108 +723,198 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </div>
 
       {/* SECTION 2: FIREBASE FIRESTORE INTEGRATION */}
-      <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-5">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+      <div className="bg-white rounded-3xl p-6 border-2 border-amber-200 bg-amber-50/15 shadow-sm space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-amber-100 pb-4">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-900 flex items-center justify-center font-bold">
-              <Database className="w-4 h-4" />
+            <div className="w-9 h-9 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-bold shadow-sm">
+              <Database className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-sm text-slate-800">
-                Kết Nối Cơ Sở Dữ Liệu Firebase Firestore
-              </h3>
-              <p className="text-xs text-slate-500">
-                Lưu trữ lâu dài trên Cloud Firestore và đồng bộ đa thiết bị.
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-sm text-slate-800">
+                  Kết Nối Cơ Sở Dữ Liệu Firebase Firestore
+                </h3>
+                {firebaseStatus === "connected" ? (
+                  <span className="text-[10px] bg-emerald-100 text-emerald-900 font-bold px-2 py-0.5 rounded-md border border-emerald-300 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                    Đã kết nối Firestore
+                  </span>
+                ) : firebaseStatus === "error" ? (
+                  <span className="text-[10px] bg-rose-100 text-rose-800 font-bold px-2 py-0.5 rounded-md border border-rose-300 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3 text-rose-600" />
+                    Chưa kết nối
+                  </span>
+                ) : (
+                  <span className="text-[10px] bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-md border border-slate-200">
+                    {useFirebase ? "Đã bật cấu hình" : "Chưa kích hoạt"}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Lưu trữ vĩnh viễn trên Google Cloud Firestore và tự động đồng bộ realtime giữa mọi thiết bị.
               </p>
             </div>
           </div>
 
-          <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
-            <span>Bật Firebase</span>
-            <input
-              type="checkbox"
-              checked={useFirebase}
-              onChange={(e) => setUseFirebase(e.target.checked)}
-              className="w-4 h-4 text-[#1A472A] rounded focus:ring-[#1A472A]"
-            />
-          </label>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <button
+              type="button"
+              onClick={() => setShowFirebaseGuide(!showFirebaseGuide)}
+              className="text-[11px] font-bold text-amber-900 hover:text-amber-950 bg-amber-100/80 hover:bg-amber-200/80 px-2.5 py-1.5 rounded-xl transition-colors flex items-center gap-1"
+            >
+              <Sparkles className="w-3 h-3" />
+              <span>{showFirebaseGuide ? "Ẩn hướng dẫn" : "Xem hướng dẫn lấy Key"}</span>
+            </button>
+
+            <label className="flex items-center gap-2 text-xs font-bold text-slate-800 bg-white border border-slate-200 px-3 py-1.5 rounded-xl shadow-xs cursor-pointer select-none">
+              <span>Bật Firebase</span>
+              <input
+                type="checkbox"
+                checked={useFirebase}
+                onChange={(e) => setUseFirebase(e.target.checked)}
+                className="w-4 h-4 text-[#1A472A] rounded focus:ring-[#1A472A]"
+              />
+            </label>
+          </div>
         </div>
 
-        {firebaseMessage && (
-          <div className="p-3 rounded-2xl bg-blue-50 border border-blue-200 text-xs text-blue-800">
-            {firebaseMessage}
+        {/* Step-by-Step Guide Accordion */}
+        {showFirebaseGuide && (
+          <div className="p-4 rounded-2xl bg-amber-50/90 border border-amber-200 text-xs text-amber-950 space-y-2.5 leading-relaxed">
+            <h4 className="font-bold flex items-center gap-1.5 text-amber-900 text-sm">
+              <Check className="w-4 h-4 text-emerald-600" />
+              Lấy Web API Key cho dự án <span className="font-mono bg-white px-2 py-0.5 rounded border border-amber-300 text-amber-900">bctg-408ca</span>:
+            </h4>
+            <ol className="list-decimal pl-4 space-y-1.5 text-slate-700">
+              <li>
+                Mở trực tiếp trang Cài đặt dự án:{" "}
+                <a
+                  href="https://console.firebase.google.com/u/0/project/bctg-408ca/settings/general"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-blue-600 font-bold underline inline-flex items-center gap-1 hover:text-blue-800"
+                >
+                  Firebase Console: Cài đặt dự án bctg-408ca ↗
+                </a>
+              </li>
+              <li>
+                Tại mục <strong>Web API Key</strong> (hoặc cuộn xuống mục <strong>Your apps ➔ Web app SDK config</strong>), sao chép chuỗi <strong>API Key</strong> (dạng <code>AIzaSy...</code>).
+              </li>
+              <li>
+                Dán vào ô <strong>Firebase API Key</strong> bên dưới và bấm nút <strong>💾 Lưu & Kiểm tra kết nối Firestore</strong>.
+              </li>
+            </ol>
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+        {firebaseMessage && (
+          <div
+            className={`p-3 rounded-2xl text-xs flex items-start gap-2 ${
+              firebaseStatus === "connected"
+                ? "bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold"
+                : firebaseStatus === "error"
+                ? "bg-rose-50 text-rose-800 border border-rose-200"
+                : "bg-blue-50 text-blue-800 border border-blue-200"
+            }`}
+          >
+            <span>{firebaseMessage}</span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-xs">
           <div>
-            <label className="font-semibold text-slate-600 block mb-1">Firebase Project ID:</label>
+            <label className="font-bold text-slate-700 block mb-1">
+              Firebase Project ID <span className="text-rose-500">*</span>:
+            </label>
             <input
               type="text"
               value={fbProjectId}
-              onChange={(e) => setFbProjectId(e.target.value)}
+              onChange={(e) => handleProjectIdChange(e.target.value)}
               placeholder="VD: thaythang-math-club"
-              className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none"
+              className="w-full p-2.5 rounded-xl border border-slate-300 bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/30 font-mono"
             />
           </div>
 
           <div>
-            <label className="font-semibold text-slate-600 block mb-1">Firebase API Key:</label>
+            <label className="font-bold text-slate-700 block mb-1">
+              Firebase API Key <span className="text-rose-500">*</span>:
+            </label>
             <input
               type="text"
               value={fbApiKey}
               onChange={(e) => setFbApiKey(e.target.value)}
               placeholder="AIzaSy..."
-              className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none"
+              className="w-full p-2.5 rounded-xl border border-slate-300 bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/30 font-mono"
             />
           </div>
 
           <div>
-            <label className="font-semibold text-slate-600 block mb-1">Auth Domain:</label>
+            <label className="font-semibold text-slate-600 block mb-1">Auth Domain (Tự động):</label>
             <input
               type="text"
               value={fbAuthDomain}
               onChange={(e) => setFbAuthDomain(e.target.value)}
               placeholder="thaythang-math-club.firebaseapp.com"
-              className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none"
+              className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none font-mono text-slate-700"
             />
           </div>
 
           <div>
-            <label className="font-semibold text-slate-600 block mb-1">Storage Bucket:</label>
+            <label className="font-semibold text-slate-600 block mb-1">Storage Bucket (Tự động):</label>
             <input
               type="text"
               value={fbStorageBucket}
               onChange={(e) => setFbStorageBucket(e.target.value)}
               placeholder="thaythang-math-club.appspot.com"
-              className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none"
+              className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none font-mono text-slate-700"
             />
           </div>
         </div>
 
-        {useFirebase && (
-          <div className="flex flex-wrap items-center gap-3 pt-2">
+        {/* Action buttons inside Firebase card */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-amber-100">
+          <div className="flex flex-wrap items-center gap-2.5">
             <button
               type="button"
-              onClick={handleSyncFirebase}
-              disabled={firebaseSyncing}
-              className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-slate-950 text-xs font-black flex items-center gap-1.5 transition-colors border border-amber-600 shadow-sm cursor-pointer"
+              onClick={handleSaveAndTestFirebase}
+              disabled={testingFirebase}
+              className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-slate-950 text-xs font-black flex items-center gap-1.5 transition-all border border-amber-600 shadow-sm cursor-pointer"
             >
-              {firebaseSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-              <span>⚡ Migrate dữ liệu cũ lên Firebase</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handlePullFirebase}
-              disabled={firebaseSyncing}
-              className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center gap-1.5 transition-colors border border-slate-300 cursor-pointer"
-            >
-              {firebaseSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Cloud className="w-3.5 h-3.5 text-blue-600" />}
-              <span>Tải dữ liệu từ Firestore về máy</span>
+              {testingFirebase ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Save className="w-3.5 h-3.5" />
+              )}
+              <span>{testingFirebase ? "Đang kiểm tra kết nối..." : "💾 Lưu & Kiểm tra kết nối Firestore"}</span>
             </button>
           </div>
-        )}
+
+          {useFirebase && (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSyncFirebase}
+                disabled={firebaseSyncing}
+                className="px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900 text-white text-xs font-black flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                title="Đẩy toàn bộ học sinh, lớp học, tài khoản và báo cáo hiện có lên Firebase"
+              >
+                {firebaseSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 text-amber-300" />}
+                <span>⚡ Migrate dữ liệu lên Firestore</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handlePullFirebase}
+                disabled={firebaseSyncing}
+                className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-800 text-xs font-bold flex items-center gap-1.5 transition-colors border border-slate-300 cursor-pointer"
+                title="Tải lại toàn bộ dữ liệu từ Cloud Firestore về máy này"
+              >
+                {firebaseSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Cloud className="w-3.5 h-3.5 text-blue-600" />}
+                <span>Tải dữ liệu từ Firestore</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* SECTION 2.3: GOOGLE DRIVE INTEGRATION & SYNC */}
