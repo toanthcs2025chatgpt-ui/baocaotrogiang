@@ -1174,6 +1174,7 @@ export const storageService = {
 
   saveSettings(settings: ClubSettings): void {
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+    this.triggerAutoSync();
   },
 
   // Classes
@@ -2133,6 +2134,20 @@ function doGet(e) {
   },
 
   // Push to Cloud Live: Syncs both to shared server cache and Google Drive
+  // Get or create unique persistent device identifier
+  getDeviceId(): string {
+    try {
+      let id = localStorage.getItem("TT_DEVICE_ID");
+      if (!id) {
+        id = `dev_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        localStorage.setItem("TT_DEVICE_ID", id);
+      }
+      return id;
+    } catch {
+      return "dev_default";
+    }
+  },
+
   async pushToCloudLive(options?: {
     forceDownload?: boolean;
     updatedBy?: string;
@@ -2154,6 +2169,7 @@ function doGet(e) {
     const settings = this.getSettings();
     const webhookUrl = settings.googleDriveConfig?.scriptWebhookUrl?.trim();
     const payload = this.getBackupPayload();
+    const deviceId = this.getDeviceId();
     let uploadedToCloud = false;
     let cloudUrl: string | undefined;
     let serverVersion: number | undefined;
@@ -2167,6 +2183,7 @@ function doGet(e) {
           updatedBy: options?.updatedBy || settings.clubName || "Quản trị viên (Thầy Thắng)",
           account: "thangsinh2444@gmail.com",
           webhookUrl: webhookUrl || undefined,
+          deviceId,
         }),
       });
 
@@ -2176,6 +2193,9 @@ function doGet(e) {
         serverVersion = pushData.version;
         if (pushData.version) {
           localStorage.setItem(STORAGE_KEYS.LAST_CLOUD_SYNC_VERSION, String(pushData.version));
+        }
+        if (pushData.updatedAt) {
+          localStorage.setItem(STORAGE_KEYS.LAST_CLOUD_SYNC_TIME, pushData.updatedAt);
         }
         if (pushData.gdriveDetails?.url || pushData.gdriveDetails?.folderUrl) {
           cloudUrl = pushData.gdriveDetails.url || pushData.gdriveDetails.folderUrl;
@@ -2314,7 +2334,7 @@ function doGet(e) {
     }
   },
 
-  // Auto-sync on startup across devices
+  // Auto-sync on startup across devices (PC, Laptop, iPad, Phone)
   async autoSyncOnStartup(): Promise<{
     synced: boolean;
     message?: string;
@@ -2333,15 +2353,15 @@ function doGet(e) {
 
       const localVersionStr = localStorage.getItem(STORAGE_KEYS.LAST_CLOUD_SYNC_VERSION);
       const localVersion = localVersionStr ? parseInt(localVersionStr, 10) : 0;
-      const localReports = this.getReports();
+      const localSyncTime = localStorage.getItem(STORAGE_KEYS.LAST_CLOUD_SYNC_TIME);
 
-      // If local has never synced, or local is empty, or cloud has newer version:
-      if (!localVersionStr || localVersion < meta.version || localReports.length === 0) {
+      // Always pull if local has never synced, or local version/time differs from cloud
+      if (!localVersionStr || localVersion < meta.version || (meta.updatedAt && meta.updatedAt !== localSyncTime)) {
         const pullRes = await this.pullFromCloudLive();
         if (pullRes.success) {
           return {
             synced: true,
-            message: `Đã tự động cập nhật dữ liệu mới nhất từ Đám mây (Cập nhật bởi ${meta.updatedBy || "Google Drive"})`,
+            message: `Đã tự động cập nhật ${pullRes.totalItems || meta.totalItems || 0} mục dữ liệu mới nhất từ Đám mây (Cập nhật bởi ${meta.updatedBy || "Google Drive"})`,
             totalItems: pullRes.totalItems,
           };
         }
@@ -2350,6 +2370,114 @@ function doGet(e) {
     } catch (e) {
       return { synced: false };
     }
+  },
+
+  // Real-time EventStream & Cross-Device Synchronizer for Instant Updates
+  initRealtimeCloudSync(onSyncUpdate: (info: { version: number; updatedBy: string; totalItems?: number }) => void): () => void {
+    let eventSource: EventSource | null = null;
+    let isCleanedUp = false;
+    let reconnectTimer: any = null;
+    const deviceId = this.getDeviceId();
+
+    // 1. Check version and pull if outdated
+    const checkAndPull = async () => {
+      if (isCleanedUp) return;
+      try {
+        const res = await fetch("/api/cloud-sync/version");
+        const meta = await res.json();
+        if (meta.success && meta.hasData) {
+          const localVersionStr = localStorage.getItem(STORAGE_KEYS.LAST_CLOUD_SYNC_VERSION);
+          const localVersion = localVersionStr ? parseInt(localVersionStr, 10) : 0;
+          const localSyncTime = localStorage.getItem(STORAGE_KEYS.LAST_CLOUD_SYNC_TIME);
+
+          if (!localVersionStr || localVersion < meta.version || (meta.updatedAt && meta.updatedAt !== localSyncTime)) {
+            const pullRes = await this.pullFromCloudLive();
+            if (pullRes.success) {
+              onSyncUpdate({
+                version: meta.version,
+                updatedBy: meta.updatedBy || "Đám mây",
+                totalItems: pullRes.totalItems || meta.totalItems,
+              });
+            }
+          }
+        }
+      } catch (e) {
+        // Network idle or offline
+      }
+    };
+
+    // 2. Establish Server-Sent Events stream
+    const connectSSE = () => {
+      if (isCleanedUp) return;
+      try {
+        if (typeof window !== "undefined" && window.EventSource) {
+          eventSource = new EventSource("/api/cloud-sync/stream");
+
+          eventSource.onmessage = async (event) => {
+            try {
+              const data = JSON.parse(event.data);
+              if (data.type === "cloud_sync_update") {
+                // If updated by another device
+                if (data.senderDeviceId !== deviceId) {
+                  const pullRes = await this.pullFromCloudLive();
+                  if (pullRes.success) {
+                    onSyncUpdate({
+                      version: data.version,
+                      updatedBy: data.updatedBy || "Thiết bị khác",
+                      totalItems: data.totalItems,
+                    });
+                  }
+                }
+              }
+            } catch (err) {}
+          };
+
+          eventSource.onerror = () => {
+            if (eventSource) {
+              eventSource.close();
+              eventSource = null;
+            }
+            // Retry connecting in 5 seconds
+            if (!isCleanedUp) {
+              reconnectTimer = setTimeout(connectSSE, 5000);
+            }
+          };
+        }
+      } catch (e) {
+        console.warn("SSE stream setup error:", e);
+      }
+    };
+
+    connectSSE();
+
+    // 3. Tab Visibility / Focus listener (Instant sync when user returns to tablet/phone/PC)
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === "visible") {
+        checkAndPull();
+      }
+    };
+
+    window.addEventListener("focus", handleVisibilityOrFocus);
+    document.addEventListener("visibilitychange", handleVisibilityOrFocus);
+
+    // 4. Polling heartbeat every 8 seconds as resilient backup
+    const heartbeatInterval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        checkAndPull();
+      }
+    }, 8000);
+
+    return () => {
+      isCleanedUp = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (heartbeatInterval) clearInterval(heartbeatInterval);
+      window.removeEventListener("focus", handleVisibilityOrFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
+      if (eventSource) {
+        eventSource.close();
+        eventSource = null;
+      }
+    };
   },
 
   getGoogleDriveSnapshot(): any | null {
@@ -2373,23 +2501,22 @@ function doGet(e) {
     return this.restoreBackupData(snapshot);
   },
 
-  // Debounced auto sync
+  // Debounced auto sync to Cloud and Google Drive on all mutations
   triggerAutoSync(): void {
-    const settings = this.getSettings();
-    if (settings.googleDriveConfig?.isConnected && settings.googleDriveConfig?.autoSync !== false) {
-      if ((window as any).__autoSyncDebounceTimeout) {
-        clearTimeout((window as any).__autoSyncDebounceTimeout);
-      }
-      (window as any).__autoSyncDebounceTimeout = setTimeout(() => {
-        try {
-          this.pushToCloudLive().catch((e) =>
-            console.warn("Auto background cloud sync error:", e)
-          );
-        } catch (e) {
-          console.warn("Auto-sync to Google Drive error:", e);
-        }
-      }, 1200);
+    if ((window as any).__autoSyncDebounceTimeout) {
+      clearTimeout((window as any).__autoSyncDebounceTimeout);
     }
+    (window as any).__autoSyncDebounceTimeout = setTimeout(() => {
+      try {
+        const currentUser = this.getCurrentUser();
+        const updatedBy = currentUser?.name ? `${currentUser.name}` : "Hệ thống CLB Toán";
+        this.pushToCloudLive({ updatedBy }).catch((e) =>
+          console.warn("Auto background cloud sync error:", e)
+        );
+      } catch (e) {
+        console.warn("Auto-sync to Cloud error:", e);
+      }
+    }, 600);
   },
 
   // Math Misconceptions Configuration (Admin configures global template, Assistants have personalized config)

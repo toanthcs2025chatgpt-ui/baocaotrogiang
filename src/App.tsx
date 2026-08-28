@@ -68,8 +68,15 @@ export function App() {
     };
   }, [currentUser]);
 
-  // Auto-sync on startup across devices (Google Drive & Cloud Store)
+  // Real-time Cross-Device SSE Synchronizer (Instant sync across PC, Laptop, iPad, Phone)
   useEffect(() => {
+    const unsubCloudSSE = storageService.initRealtimeCloudSync((info) => {
+      setDataVersion((v) => v + 1);
+      setSyncToastMsg(`⚡ Đã đồng bộ dữ liệu mới nhất từ đám mây (Cập nhật bởi ${info.updatedBy || "Thiết bị khác"})`);
+      setTimeout(() => setSyncToastMsg(null), 4000);
+    });
+
+    // Auto-sync on startup
     let isMounted = true;
     storageService.autoSyncOnStartup().then((res) => {
       if (isMounted && res.synced) {
@@ -78,8 +85,10 @@ export function App() {
         setTimeout(() => setSyncToastMsg(null), 4500);
       }
     });
+
     return () => {
       isMounted = false;
+      if (unsubCloudSSE) unsubCloudSSE();
     };
   }, []);
 

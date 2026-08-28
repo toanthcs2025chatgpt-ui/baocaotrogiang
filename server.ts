@@ -636,7 +636,59 @@ Thầy Thắng và đội ngũ trợ giảng sẽ tiếp tục bám sát từng 
   // SHARED MULTI-DEVICE CLOUD SYNC ENDPOINTS
   // ==========================================
   
-  // 1. Get current cloud version and metadata (for fast polling)
+  // Real-time SSE client connections
+  const sseClients = new Set<express.Response>();
+
+  function broadcastCloudUpdate(meta: any) {
+    const payload = `data: ${JSON.stringify(meta)}\n\n`;
+    for (const client of sseClients) {
+      try {
+        client.write(payload);
+      } catch (e) {
+        sseClients.delete(client);
+      }
+    }
+  }
+
+  // Periodic keep-alive ping for active connections
+  setInterval(() => {
+    const ping = `event: ping\ndata: ${Date.now()}\n\n`;
+    for (const client of sseClients) {
+      try {
+        client.write(ping);
+      } catch (e) {
+        sseClients.delete(client);
+      }
+    }
+  }, 20000);
+
+  // 0. Real-time Live EventStream for Instant Multi-Device Sync (PC, iPad, Tablet, Mobile)
+  app.get("/api/cloud-sync/stream", (req, res) => {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+
+    // Send initial handshake with current cloud version
+    res.write(
+      `data: ${JSON.stringify({
+        type: "connected",
+        version: sharedCloudStore.version,
+        updatedAt: sharedCloudStore.updatedAt,
+        updatedBy: sharedCloudStore.updatedBy,
+        totalItems: sharedCloudStore.totalItems,
+      })}\n\n`
+    );
+
+    sseClients.add(res);
+
+    req.on("close", () => {
+      sseClients.delete(res);
+    });
+  });
+
+  // 1. Get current cloud version and metadata (for fast polling & visibility change)
   app.get("/api/cloud-sync/version", (req, res) => {
     res.json({
       success: true,
@@ -675,7 +727,7 @@ Thầy Thắng và đội ngũ trợ giảng sẽ tiếp tục bám sát từng 
   // 3. Push full snapshot to shared cloud (and optionally forward to Google Drive)
   app.post("/api/cloud-sync/push", async (req, res) => {
     try {
-      const { data, updatedBy, account, webhookUrl } = req.body;
+      const { data, updatedBy, account, webhookUrl, deviceId } = req.body;
       if (!data) {
         return res.status(400).json({
           success: false,
@@ -710,6 +762,16 @@ Thầy Thắng và đội ngũ trợ giảng sẽ tiếp tục bám sát từng 
       } catch (err) {
         console.warn("Could not write to shared_cloud_store.json:", err);
       }
+
+      // Broadcast live event to all connected devices immediately!
+      broadcastCloudUpdate({
+        type: "cloud_sync_update",
+        version: sharedCloudStore.version,
+        updatedAt: sharedCloudStore.updatedAt,
+        updatedBy: sharedCloudStore.updatedBy,
+        senderDeviceId: deviceId || null,
+        totalItems,
+      });
 
       // If webhookUrl is provided, forward to Google Drive in background
       let gdriveResult: any = null;

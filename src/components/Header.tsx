@@ -73,20 +73,17 @@ export const Header: React.FC<HeaderProps> = ({
   const isDriveConnected = settings.googleDriveConfig?.isConnected;
 
   const handleDriveQuickSync = async () => {
-    if (!isDriveConnected) {
-      onOpenSettings();
-      return;
-    }
     setDriveSyncing(true);
     setDriveSyncMsg(null);
     try {
-      const res = await storageService.syncToGoogleDriveLive(true);
+      const pushRes = await storageService.pushToCloudLive({ updatedBy: currentUser.name });
+      const pullRes = await storageService.pullFromCloudLive();
       setDriveSyncing(false);
-      if (res.success) {
-        setDriveSyncMsg(res.uploadedToCloud ? "Đã lưu Drive!" : "Đã đồng bộ & tải!");
+      if (pushRes.success || pullRes.success) {
+        setDriveSyncMsg("Đã đồng bộ xong!");
         setTimeout(() => setDriveSyncMsg(null), 3500);
       } else {
-        setDriveSyncMsg("Lỗi đồng bộ!");
+        setDriveSyncMsg("Lỗi kết nối đám mây!");
         setTimeout(() => setDriveSyncMsg(null), 3500);
       }
     } catch (err) {
@@ -197,34 +194,22 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Right side: Notifications, Quick Action & Role Switcher */}
         <div className="flex items-center gap-2 sm:gap-2.5">
-          {/* Google Drive Sync Status & Quick Sync - Admin only */}
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={handleDriveQuickSync}
-              title={
-                isDriveConnected
-                  ? `Google Drive đã kết nối (${settings.googleDriveConfig?.email || "toanthcs2025chatgpt@gmail.com"}). Bấm để đồng bộ ngay.`
-                  : "Chưa kết nối Google Drive. Bấm để mở cài đặt kết nối."
-              }
-              className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-[0_3px_0_0_#0f172a] active:shadow-none active:translate-y-0.5 cursor-pointer ${
-                isDriveConnected
-                  ? "bg-sky-950/90 hover:bg-sky-900 text-sky-200 border-sky-600/70"
-                  : "bg-slate-900/80 hover:bg-slate-800 text-slate-300 border-slate-600/50"
-              }`}
-            >
-              <Cloud className={`w-3.5 h-3.5 ${driveSyncing ? "animate-spin text-sky-400" : isDriveConnected ? "text-emerald-400" : "text-slate-400"}`} />
-              <span className="text-[11px] font-black">
-                {driveSyncing
-                  ? "Đang lưu..."
-                  : driveSyncMsg
-                  ? driveSyncMsg
-                  : isDriveConnected
-                  ? "Drive Sync"
-                  : "Nối Drive"}
-              </span>
-            </button>
-          )}
+          {/* Real-time Multi-Device Cloud Sync Button */}
+          <button
+            type="button"
+            onClick={handleDriveQuickSync}
+            title="Bấm để đồng bộ dữ liệu ngay lập tức giữa Máy tính, Laptop, iPad và Điện thoại qua Đám mây & Google Drive"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-[0_3px_0_0_#0f172a] active:shadow-none active:translate-y-0.5 cursor-pointer bg-sky-950/90 hover:bg-sky-900 text-sky-200 border-sky-600/70"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${driveSyncing ? "animate-spin text-sky-400" : "text-emerald-400"}`} />
+            <span className="text-[11px] font-black">
+              {driveSyncing
+                ? "Đang đồng bộ..."
+                : driveSyncMsg
+                ? driveSyncMsg
+                : "Đồng bộ Đám mây"}
+            </span>
+          </button>
 
           {/* Quick JSON Backup Button - Admin only */}
           {isAdmin && (
