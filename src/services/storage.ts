@@ -32,6 +32,7 @@ const STORAGE_KEYS = {
   TIMETABLE_SLOTS: "thaythang_timetable_slots_v2",
   MASTER_TIMETABLE_SLOTS: "thaythang_master_timetable_slots_v2",
   TIMETABLE_SETTINGS: "thaythang_timetable_settings_v2",
+  ASSISTANT_ATTENDANCE: "thaythang_assistant_attendance_v1",
   GDRIVE_SYNC_SNAPSHOT: "thaythang_gdrive_synced_data",
   LAST_CLOUD_SYNC_VERSION: "thaythang_cloud_sync_version_v1",
   LAST_CLOUD_SYNC_TIME: "thaythang_cloud_sync_time_v1",
@@ -595,6 +596,10 @@ const DEFAULT_ASSISTANTS: Assistant[] = [
     username: "nguyenminhhung",
     password: "123456",
     classes: ["cls_9a1", "cls_8a2"],
+    bankName: "MB Bank (Ngân hàng Quân Đội)",
+    bankAccountNumber: "9999888866",
+    bankAccountName: "NGUYEN MINH HUNG",
+    qrCodeUrl: "https://img.vietqr.io/image/mbbank-9999888866-compact2.png?amount=0&accountName=NGUYEN%20MINH%20HUNG",
     active: true,
     joinedDate: "2024-09-01",
     notes: "Sinh viên ĐH Sư Phạm Hà Nội - Khoa Toán (Giải Nhì HSG Quốc gia).",
@@ -607,6 +612,10 @@ const DEFAULT_ASSISTANTS: Assistant[] = [
     username: "tranthaovy",
     password: "123456",
     classes: ["cls_6a1", "cls_7a1"],
+    bankName: "Techcombank",
+    bankAccountNumber: "19036888999",
+    bankAccountName: "TRAN THAO VY",
+    qrCodeUrl: "https://img.vietqr.io/image/techcombank-19036888999-compact2.png?amount=0&accountName=TRAN%20THAO%20VY",
     active: true,
     joinedDate: "2024-10-15",
     notes: "Nhiệt tình, chu đáo, rất được phụ huynh và các bạn nhỏ khối 6-7 yêu mến.",
@@ -619,6 +628,10 @@ const DEFAULT_ASSISTANTS: Assistant[] = [
     username: "leducanh",
     password: "123456",
     classes: ["cls_8a2"],
+    bankName: "Vietcombank",
+    bankAccountNumber: "0011004567890",
+    bankAccountName: "LE DUC ANH",
+    qrCodeUrl: "https://img.vietqr.io/image/vietcombank-0011004567890-compact2.png?amount=0&accountName=LE%20DUC%20ANH",
     active: true,
     joinedDate: "2025-01-10",
     notes: "Phụ trách chấm bài tập về nhà và hỗ trợ các bạn học sinh còn yếu.",
@@ -996,19 +1009,41 @@ const DEFAULT_REPORTS: Report[] = [
 
 // Helper functions with localStorage + fallback
 export const storageService = {
+  // Safe setItem with QuotaExceededError protection and eviction of volatile caches
+  safeSetItem(key: string, value: string): boolean {
+    try {
+      localStorage.setItem(key, value);
+      return true;
+    } catch (e: any) {
+      console.warn(`localStorage quota exceeded or error while writing key: ${key}. Evicting transient caches...`, e);
+      try {
+        // Evict non-critical caches to recover space
+        localStorage.removeItem(STORAGE_KEYS.STUDENT_ANALYSIS_CACHE);
+        localStorage.removeItem(STORAGE_KEYS.GDRIVE_SYNC_SNAPSHOT);
+        localStorage.removeItem(STORAGE_KEYS.REPORT_DRAFT);
+        // Retry writing
+        localStorage.setItem(key, value);
+        return true;
+      } catch (retryError) {
+        console.error(`Critical localStorage write failure for key ${key} even after cache eviction:`, retryError);
+        return false;
+      }
+    }
+  },
+
   // Bulk save methods
   saveClasses(classes: ClassItem[]): void {
-    localStorage.setItem(STORAGE_KEYS.CLASSES, JSON.stringify(classes));
+    this.safeSetItem(STORAGE_KEYS.CLASSES, JSON.stringify(classes));
     this.triggerAutoSync();
   },
 
   saveStudents(students: Student[]): void {
-    localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(students));
+    this.safeSetItem(STORAGE_KEYS.STUDENTS, JSON.stringify(students));
     this.triggerAutoSync();
   },
 
   saveReports(reports: Report[]): void {
-    localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(reports));
+    this.safeSetItem(STORAGE_KEYS.REPORTS, JSON.stringify(reports));
     this.triggerAutoSync();
   },
 
@@ -1349,7 +1384,7 @@ export const storageService = {
     } else {
       list.push(cls);
     }
-    localStorage.setItem(STORAGE_KEYS.CLASSES, JSON.stringify(list));
+    this.safeSetItem(STORAGE_KEYS.CLASSES, JSON.stringify(list));
 
     // Cascade name change across the entire application
     this.cascadeClassNameUpdate(cls.id, cls.name, oldName);
@@ -1358,7 +1393,7 @@ export const storageService = {
 
   deleteClass(classId: string): void {
     const list = this.getClasses().filter((c) => c.id !== classId);
-    localStorage.setItem(STORAGE_KEYS.CLASSES, JSON.stringify(list));
+    this.safeSetItem(STORAGE_KEYS.CLASSES, JSON.stringify(list));
     this.triggerAutoSync();
   },
 
@@ -1366,7 +1401,30 @@ export const storageService = {
   getAssistants(): Assistant[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.ASSISTANTS);
-      if (data) return JSON.parse(data);
+      if (data) {
+        const parsed: Assistant[] = JSON.parse(data);
+        // Merge missing default bank/qr info for standard assistants if not set
+        let changed = false;
+        const updated = parsed.map((a) => {
+          const def = DEFAULT_ASSISTANTS.find((d) => d.id === a.id);
+          if (def && (!a.qrCodeUrl || !a.bankAccountNumber)) {
+            changed = true;
+            return {
+              ...def,
+              ...a,
+              bankName: a.bankName || def.bankName,
+              bankAccountNumber: a.bankAccountNumber || def.bankAccountNumber,
+              bankAccountName: a.bankAccountName || def.bankAccountName,
+              qrCodeUrl: a.qrCodeUrl || def.qrCodeUrl,
+            };
+          }
+          return a;
+        });
+        if (changed) {
+          localStorage.setItem(STORAGE_KEYS.ASSISTANTS, JSON.stringify(updated));
+        }
+        return updated;
+      }
     } catch (e) {}
     localStorage.setItem(STORAGE_KEYS.ASSISTANTS, JSON.stringify(DEFAULT_ASSISTANTS));
     return DEFAULT_ASSISTANTS;
@@ -1387,7 +1445,7 @@ export const storageService = {
     } else {
       list.push(normalizedAsst);
     }
-    localStorage.setItem(STORAGE_KEYS.ASSISTANTS, JSON.stringify(list));
+    this.safeSetItem(STORAGE_KEYS.ASSISTANTS, JSON.stringify(list));
 
     // If current user is this assistant, update their profile
     const currentUser = this.getCurrentUser();
@@ -1407,7 +1465,7 @@ export const storageService = {
 
   deleteAssistant(id: string): void {
     const list = this.getAssistants().filter((a) => a.id !== id);
-    localStorage.setItem(STORAGE_KEYS.ASSISTANTS, JSON.stringify(list));
+    this.safeSetItem(STORAGE_KEYS.ASSISTANTS, JSON.stringify(list));
 
     // If current user is this assistant, revert to admin
     const currentUser = this.getCurrentUser();
@@ -1445,13 +1503,13 @@ export const storageService = {
     } else {
       list.push(normalizedStd);
     }
-    localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(list));
+    this.safeSetItem(STORAGE_KEYS.STUDENTS, JSON.stringify(list));
     this.triggerAutoSync();
   },
 
   deleteStudent(id: string): void {
     const list = this.getStudents().filter((s) => s.id !== id);
-    localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(list));
+    this.safeSetItem(STORAGE_KEYS.STUDENTS, JSON.stringify(list));
     this.triggerAutoSync();
   },
 
@@ -1489,7 +1547,7 @@ export const storageService = {
     } else {
       list.unshift(normalizedReport); // Add latest to top
     }
-    localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(list));
+    this.safeSetItem(STORAGE_KEYS.REPORTS, JSON.stringify(list));
 
     // AUTO NOTIFICATION TRIGGER 1: Report Approved -> Notify Assistant!
     if (report.status === "approved" && (!prevReport || prevReport.status !== "approved")) {
@@ -1548,7 +1606,7 @@ export const storageService = {
     };
 
     list[idx] = updated;
-    localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(list));
+    this.safeSetItem(STORAGE_KEYS.REPORTS, JSON.stringify(list));
 
     // Send notification to the assistant
     this.saveNotification({
@@ -1731,6 +1789,7 @@ export const storageService = {
       timetableSlots: this.getTimetableSlots(),
       masterTimetableSlots: this.getMasterTimetableSlots(),
       timetableSettings: this.getTimetableSettings(),
+      assistantAttendance: this.getAssistantAttendance(),
       mathMisconceptions: this.getMathMisconceptionsConfig("admin"),
     };
   },
@@ -1850,6 +1909,11 @@ export const storageService = {
         if (typeof backupData.mathMisconceptions.isLocked === "boolean") {
           localStorage.setItem(STORAGE_KEYS.MISCONCEPTIONS_LOCKED, JSON.stringify(backupData.mathMisconceptions.isLocked));
         }
+      }
+
+      // 13. Assistant Attendance
+      if (Array.isArray(backupData.assistantAttendance)) {
+        this.safeSetItem(STORAGE_KEYS.ASSISTANT_ATTENDANCE, JSON.stringify(backupData.assistantAttendance));
       }
 
       const counts = {
@@ -2461,7 +2525,9 @@ function doGet(e) {
           const localVersion = localVersionStr ? parseInt(localVersionStr, 10) : 0;
           const localSyncTime = localStorage.getItem(STORAGE_KEYS.LAST_CLOUD_SYNC_TIME);
 
-          if (!localVersionStr || localVersion < meta.version || (meta.updatedAt && meta.updatedAt !== localSyncTime)) {
+          // Pull only if local has no version or cloud has higher version
+          const needsPull = !localVersionStr || (meta.version && localVersion < meta.version);
+          if (needsPull) {
             const pullRes = await this.pullFromCloudLive();
             if (pullRes.success) {
               onSyncUpdate({
@@ -2531,12 +2597,12 @@ function doGet(e) {
     window.addEventListener("focus", handleVisibilityOrFocus);
     document.addEventListener("visibilitychange", handleVisibilityOrFocus);
 
-    // 4. Polling heartbeat every 8 seconds as resilient backup
+    // 4. Polling heartbeat every 45 seconds as resilient backup (low CPU/battery usage)
     const heartbeatInterval = setInterval(() => {
       if (document.visibilityState === "visible") {
         checkAndPull();
       }
-    }, 8000);
+    }, 45000);
 
     return () => {
       isCleanedUp = true;
@@ -2574,6 +2640,9 @@ function doGet(e) {
 
   // Debounced auto sync to Cloud and Google Drive on all mutations
   triggerAutoSync(): void {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("clb-storage-updated"));
+    }
     if ((window as any).__autoSyncDebounceTimeout) {
       clearTimeout((window as any).__autoSyncDebounceTimeout);
     }
@@ -2671,6 +2740,22 @@ function doGet(e) {
     }
   },
 
+  
+  getAssistantAttendance(): import("../types").AssistantAttendanceRecord[] {
+    const raw = localStorage.getItem(STORAGE_KEYS.ASSISTANT_ATTENDANCE);
+    if (!raw) return [];
+    try {
+      return JSON.parse(raw) || [];
+    } catch {
+      return [];
+    }
+  },
+
+  saveAssistantAttendance(records: import("../types").AssistantAttendanceRecord[]): void {
+    this.safeSetItem(STORAGE_KEYS.ASSISTANT_ATTENDANCE, JSON.stringify(records));
+    this.triggerAutoSync();
+  },
+
   // ==================== TIMETABLE & SCHEDULE ====================
   getTimetableSettings(): TimetableSettings {
     const raw = localStorage.getItem(STORAGE_KEYS.TIMETABLE_SETTINGS);
@@ -2689,7 +2774,8 @@ function doGet(e) {
   },
 
   saveTimetableSettings(settings: TimetableSettings): void {
-    localStorage.setItem(STORAGE_KEYS.TIMETABLE_SETTINGS, JSON.stringify(settings));
+    this.safeSetItem(STORAGE_KEYS.TIMETABLE_SETTINGS, JSON.stringify(settings));
+    this.triggerAutoSync();
   },
 
   getMasterTimetableSlots(): MasterTimetableSlot[] {

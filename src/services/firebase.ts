@@ -55,7 +55,7 @@ export function getFirebaseConfig() {
 
 export function getFirebaseInstance() {
   const config = getFirebaseConfig();
-  if (!config || !config.projectId) {
+  if (!config || !config.projectId || !config.apiKey) {
     return { app: null, db: null, auth: null, isConfigured: false };
   }
 

@@ -129,9 +129,22 @@ export interface Assistant {
   password?: string; // Mật khẩu
   classes: string[]; // class IDs
   avatar?: string;
+  qrCodeUrl?: string; // Ảnh mã QR thanh toán ngân hàng
+  bankName?: string; // Tên ngân hàng
+  bankAccountNumber?: string; // Số tài khoản
+  bankAccountName?: string; // Tên chủ tài khoản
   active: boolean;
   joinedDate: string;
   notes?: string;
+}
+
+export interface AssistantAttendanceRecord {
+  id: string; // e.g., "att_2026-09-03_shift1"
+  date: string; // "YYYY-MM-DD"
+  shiftId: string;
+  assistantIds: string[]; // List of assistant IDs who attended
+  notes?: string;
+  updatedAt: string;
 }
 
 export type AttendanceStatus = "present" | "late" | "excused" | "unexcused";

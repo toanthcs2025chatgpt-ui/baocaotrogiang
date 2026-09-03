@@ -1,4 +1,6 @@
-import React, { useState } from "react";
+import { AssistantAttendanceSection } from "./AssistantAttendanceSection";
+import { AssistantPayrollSection } from "./AssistantPayrollSection";
+import React, { useState, useEffect } from "react";
 import {
   GraduationCap,
   Plus,
@@ -23,10 +25,15 @@ import {
   LayoutGrid,
   List,
   Search,
+  QrCode,
+  Upload,
+  Maximize2,
+  CreditCard,
 } from "lucide-react";
 import { Assistant, ClassItem, User } from "../types";
 import { storageService } from "../services/storage";
 import { AvatarUpload } from "./AvatarUpload";
+import { compressImageFile } from "../utils/imageUtils";
 
 interface AssistantsViewProps {
   currentUser: User;
@@ -46,6 +53,7 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
   const [viewMode, setViewMode] = useState<"grid" | "list">("list");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAssistant, setEditingAssistant] = useState<Assistant | null>(null);
+  const [activeSubTab, setActiveSubTab] = useState<"list" | "attendance" | "payroll">("list");
 
   // Form State
   const [name, setName] = useState("");
@@ -59,6 +67,17 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
   const [avatar, setAvatar] = useState("");
   const [formError, setFormError] = useState("");
 
+  // Bank & QR Code State
+  const [bankName, setBankName] = useState("");
+  const [bankAccountNumber, setBankAccountNumber] = useState("");
+  const [bankAccountName, setBankAccountName] = useState("");
+  const [qrCodeUrl, setQrCodeUrl] = useState("");
+  const [previewQrModal, setPreviewQrModal] = useState<{
+    name: string;
+    qrUrl: string;
+    bankInfo: string;
+  } | null>(null);
+
   // Toast / Copy Feedback State
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [visiblePasswordMap, setVisiblePasswordMap] = useState<Record<string, boolean>>({});
@@ -66,6 +85,14 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
   const reload = () => {
     setAssistants(storageService.getAssistants());
   };
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      setAssistants(storageService.getAssistants());
+    };
+    window.addEventListener("clb-storage-updated", handleUpdate);
+    return () => window.removeEventListener("clb-storage-updated", handleUpdate);
+  }, []);
 
   // Helper to generate username from name (lấy luôn tên bỏ dấu của trợ giảng viết liền không dấu)
   const generateUsernameFromName = (fullName: string) => {
@@ -92,6 +119,10 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
     setSelectedClasses([]);
     setNotes("");
     setAvatar("");
+    setBankName("MB Bank (Ngân hàng Quân Đội)");
+    setBankAccountNumber("");
+    setBankAccountName("");
+    setQrCodeUrl("");
     setFormError("");
     setIsUsernameCustomized(false);
     setIsModalOpen(true);
@@ -108,6 +139,10 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
     setSelectedClasses(asst.classes || []);
     setNotes(asst.notes || "");
     setAvatar(asst.avatar || "");
+    setBankName(asst.bankName || "MB Bank (Ngân hàng Quân Đội)");
+    setBankAccountNumber(asst.bankAccountNumber || "");
+    setBankAccountName(asst.bankAccountName || asst.name.toUpperCase());
+    setQrCodeUrl(asst.qrCodeUrl || "");
     setFormError("");
     setIsUsernameCustomized(true);
     setIsModalOpen(true);
@@ -124,6 +159,14 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
     if (!editingAssistant && !isUsernameCustomized) {
       const autoUser = generateUsernameFromName(val);
       setUsername(autoUser);
+    }
+    if (!editingAssistant && !bankAccountName) {
+      const cleanAccName = val
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[đĐ]/g, "D")
+        .toUpperCase();
+      setBankAccountName(cleanAccName);
     }
   };
 
@@ -169,6 +212,10 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
       phone: phone.trim(),
       classes: selectedClasses,
       avatar: avatar.trim() || undefined,
+      bankName: bankName.trim() || "MB Bank",
+      bankAccountNumber: bankAccountNumber.trim(),
+      bankAccountName: (bankAccountName.trim() || name.trim()).toUpperCase(),
+      qrCodeUrl: qrCodeUrl.trim() || undefined,
       active: true,
       joinedDate: editingAssistant?.joinedDate || new Date().toISOString().slice(0, 10),
       notes: notes.trim(),
@@ -194,13 +241,16 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
 
     const finalUsername = asst.username || generateUsernameFromName(asst.name) || asst.id;
     const finalPassword = asst.password || "123456";
+    const bankDetails = asst.bankAccountNumber
+      ? `\n💳 Số tài khoản: ${asst.bankAccountNumber} (${asst.bankName || "Ngân hàng"}) - ${asst.bankAccountName || asst.name}\n📷 Mã QR chuyển tiền: ${asst.qrCodeUrl ? "Đã sẵn sàng trên hệ thống" : "Chưa cập nhật"}`
+      : "";
 
     const text = `📋 THÔNG TIN TÀI KHOẢN TRỢ GIẢNG - CLB TOÁN THẦY THẮNG
 ------------------------------------------------
 👤 Họ và tên: ${asst.name}
 🔑 Tên đăng nhập: ${finalUsername}
 🔒 Mật khẩu mặc định: ${finalPassword}
-🏫 Lớp phụ trách: ${assignedClassNames}
+🏫 Lớp phụ trách: ${assignedClassNames}${bankDetails}
 🌐 Quyền hạn: Báo cáo buổi học & Xem lịch sử báo cáo của mình
 ------------------------------------------------
 📌 Lưu ý: Trợ giảng đăng nhập tại hệ thống Báo cáo Học vụ CLB và đổi mật khẩu sau lần đầu đăng nhập.`;
@@ -272,6 +322,40 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
         )}
       </div>
 
+
+      {/* Sub-Tabs */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide border-b-2 border-slate-200">
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("list")}
+          className={`px-5 py-3 font-bold text-sm transition-colors whitespace-nowrap ${
+            activeSubTab === "list" ? "text-blue-700 border-b-4 border-blue-600" : "text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          Danh Sách Trợ Giảng
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("attendance")}
+          className={`px-5 py-3 font-bold text-sm transition-colors whitespace-nowrap ${
+            activeSubTab === "attendance" ? "text-blue-700 border-b-4 border-blue-600" : "text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          Điểm Danh Ca Dạy
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("payroll")}
+          className={`px-5 py-3 font-bold text-sm transition-colors whitespace-nowrap ${
+            activeSubTab === "payroll" ? "text-blue-700 border-b-4 border-blue-600" : "text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          Bảng Lương
+        </button>
+      </div>
+
+      {activeSubTab === "list" && (
+      <div className="space-y-6"> {/* Start List View */}
       {/* Filter & View Mode Bar */}
       <div className="bg-white rounded-3xl p-4 border-2 border-slate-200/80 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
         <div className="relative flex-1 max-w-md w-full">
@@ -366,6 +450,7 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
                   <th className="py-3.5 px-4">Mật Khẩu</th>
                   <th className="py-3.5 px-4">Liên Hệ</th>
                   <th className="py-3.5 px-4">Lớp Phụ Trách</th>
+                  <th className="py-3.5 px-4 text-center">Tài Khoản & QR</th>
                   <th className="py-3.5 px-4 text-center">Số Ca Báo Cáo</th>
                   <th className="py-3.5 px-4 text-center w-52">Thao Tác</th>
                 </tr>
@@ -477,6 +562,31 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
                               <span className="text-slate-300 italic text-[11px]">Chưa xếp lớp</span>
                             )}
                           </div>
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          {asst.qrCodeUrl ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPreviewQrModal({
+                                  name: asst.name,
+                                  qrUrl: asst.qrCodeUrl!,
+                                  bankInfo: `${asst.bankName || "Ngân hàng"} - ${asst.bankAccountNumber || ""} - ${asst.bankAccountName || asst.name}`,
+                                })
+                              }
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold text-[11px] transition-colors cursor-pointer shadow-2xs"
+                              title="Xem mã QR thanh toán"
+                            >
+                              <QrCode className="w-3.5 h-3.5 text-amber-700" />
+                              <span>Mã QR</span>
+                            </button>
+                          ) : asst.bankAccountNumber ? (
+                            <span className="inline-block text-[10px] text-slate-600 font-mono font-bold bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-200">
+                              {asst.bankAccountNumber}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 italic text-[11px]">Chưa có QR</span>
+                          )}
                         </td>
                         <td className="py-3 px-4 text-center">
                           <span className="inline-block font-black text-amber-950 bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-200 text-[11px]">
@@ -659,6 +769,50 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
                   </div>
                 </div>
 
+                {/* Bank & QR Code Info Card */}
+                <div className="p-3 rounded-2xl bg-gradient-to-br from-amber-50/70 via-orange-50/40 to-slate-50 border-2 border-amber-200/80 flex items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-800 border border-amber-300 flex items-center justify-center shrink-0 shadow-2xs">
+                      <QrCode className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[10px] uppercase font-black tracking-wider text-amber-900">
+                        {asst.bankName || "Tài khoản ngân hàng"}
+                      </div>
+                      <div className="text-xs font-mono font-black text-slate-800 truncate">
+                        {asst.bankAccountNumber || "Chưa nhập STK"}
+                      </div>
+                    </div>
+                  </div>
+
+                  {asst.qrCodeUrl ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPreviewQrModal({
+                          name: asst.name,
+                          qrUrl: asst.qrCodeUrl!,
+                          bankInfo: `${asst.bankName || "Ngân hàng"} - ${asst.bankAccountNumber || ""} - ${asst.bankAccountName || asst.name}`,
+                        })
+                      }
+                      className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-black shrink-0 flex items-center gap-1.5 shadow-2xs cursor-pointer transition-colors"
+                      title="Xem mã QR thanh toán"
+                    >
+                      <QrCode className="w-3.5 h-3.5 text-amber-700" />
+                      <span>Xem QR</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEdit(asst)}
+                      className="px-2 py-1 rounded-xl bg-amber-200/70 hover:bg-amber-200 text-amber-900 text-[11px] font-bold shrink-0 cursor-pointer transition-colors"
+                      title="Cập nhật ảnh QR"
+                    >
+                      + Thêm QR
+                    </button>
+                  )}
+                </div>
+
                 {/* Contact info */}
                 <div className="space-y-1.5 text-xs text-slate-600 pt-1">
                   {asst.phone && (
@@ -730,6 +884,18 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
       )}
 
       {/* Modal Add / Edit Assistant with Username and Password */}
+      
+      </div>
+      )}
+      
+      {activeSubTab === "attendance" && (
+        <AssistantAttendanceSection />
+      )}
+      
+      {activeSubTab === "payroll" && (
+        <AssistantPayrollSection />
+      )}
+      
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
           <div className="bg-white rounded-3xl p-6 max-w-lg w-full shadow-2xl border-2 border-slate-200 max-h-[90vh] overflow-y-auto">
@@ -930,6 +1096,192 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
                 />
               </div>
 
+              {/* THÔNG TIN TÀI KHOẢN NGÂN HÀNG & ẢNH QR SỐ TÀI KHOẢN */}
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-50/90 via-orange-50/50 to-amber-100/40 border-2 border-amber-300/90 space-y-3.5 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-amber-200 text-amber-900 flex items-center justify-center font-black shadow-2xs">
+                      <QrCode className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-amber-950 text-xs uppercase tracking-wide">
+                        Thông Tin Tài Khoản & Ảnh QR Thanh Toán
+                      </h4>
+                      <p className="text-[11px] text-amber-800 font-medium">
+                        Ảnh QR này sẽ hiển thị trực tiếp trên <strong className="text-amber-950 font-black">Phiếu Báo Lương Cá Nhân</strong> để tiện chuyển tiền.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Tên ngân hàng:</label>
+                    <input
+                      type="text"
+                      list="bank_suggestions_list"
+                      value={bankName}
+                      onChange={(e) => setBankName(e.target.value)}
+                      placeholder="VD: MB Bank, Vietcombank..."
+                      className="w-full p-2.5 rounded-xl border-2 border-amber-200/80 bg-white focus:outline-none focus:border-amber-600 font-medium text-slate-900 shadow-2xs"
+                    />
+                    <datalist id="bank_suggestions_list">
+                      <option value="MB Bank (Ngân hàng Quân Đội)" />
+                      <option value="Vietcombank (VCB)" />
+                      <option value="Techcombank (TCB)" />
+                      <option value="BIDV" />
+                      <option value="VietinBank (CTG)" />
+                      <option value="Agribank" />
+                      <option value="VPBank" />
+                      <option value="ACB" />
+                      <option value="TPBank" />
+                      <option value="Sacombank" />
+                      <option value="MoMo" />
+                    </datalist>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Số tài khoản (STK):</label>
+                    <input
+                      type="text"
+                      value={bankAccountNumber}
+                      onChange={(e) => setBankAccountNumber(e.target.value)}
+                      placeholder="VD: 9999888866"
+                      className="w-full p-2.5 rounded-xl border-2 border-amber-200/80 bg-white focus:outline-none focus:border-amber-600 font-mono font-black text-slate-900 shadow-2xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Chủ tài khoản (viết hoa):</label>
+                    <input
+                      type="text"
+                      value={bankAccountName}
+                      onChange={(e) => setBankAccountName(e.target.value.toUpperCase())}
+                      placeholder="VD: NGUYEN MINH HUNG"
+                      className="w-full p-2.5 rounded-xl border-2 border-amber-200/80 bg-white focus:outline-none focus:border-amber-600 font-mono font-black text-slate-900 shadow-2xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Upload or Generate QR Code */}
+                <div className="pt-2 border-t border-amber-200/70">
+                  <div className="flex flex-col sm:flex-row items-center gap-3.5 bg-white/90 p-3 rounded-2xl border-2 border-dashed border-amber-300">
+                    {/* QR Thumbnail Preview */}
+                    {qrCodeUrl ? (
+                      <div className="relative group shrink-0">
+                        <img
+                          src={qrCodeUrl}
+                          alt="Mã QR thanh toán"
+                          className="w-24 h-24 object-contain rounded-xl border-2 border-amber-400 shadow-sm bg-white p-1"
+                        />
+                        <div className="absolute inset-0 bg-slate-950/70 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPreviewQrModal({
+                                name: name || "Trợ giảng",
+                                qrUrl: qrCodeUrl,
+                                bankInfo: `${bankName} - ${bankAccountNumber} - ${bankAccountName}`,
+                              })
+                            }
+                            className="p-1.5 rounded-lg bg-white/30 hover:bg-white/50 text-white cursor-pointer"
+                            title="Phóng to xem mã"
+                          >
+                            <Maximize2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setQrCodeUrl("")}
+                            className="p-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white cursor-pointer"
+                            title="Xóa ảnh QR này"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="w-24 h-24 rounded-xl border-2 border-slate-200 bg-slate-50 flex flex-col items-center justify-center text-slate-400 shrink-0">
+                        <QrCode className="w-8 h-8 opacity-40 mb-1" />
+                        <span className="text-[10px] font-bold text-slate-500">Chưa có QR</span>
+                      </div>
+                    )}
+
+                    {/* Upload / Action Buttons */}
+                    <div className="flex-1 w-full space-y-2 text-xs">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className="px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl cursor-pointer flex items-center gap-1.5 transition-colors shadow-2xs">
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Tải ảnh QR từ máy</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                try {
+                                  const compressed = await compressImageFile(file, {
+                                    maxWidth: 600,
+                                    maxHeight: 600,
+                                    quality: 0.82,
+                                  });
+                                  setQrCodeUrl(compressed);
+                                } catch (err) {
+                                  console.warn("Failed to compress QR image:", err);
+                                }
+                              }
+                            }}
+                          />
+                        </label>
+
+                        {/* Quick VietQR generator button if account number exists */}
+                        {bankAccountNumber && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const cleanAcc = bankAccountNumber.replace(/[^0-9a-zA-Z]/g, "");
+                              const bName = bankName.toLowerCase();
+                              let bankCode = "mbbank";
+                              if (bName.includes("vietcombank") || bName.includes("vcb")) bankCode = "vietcombank";
+                              else if (bName.includes("techcombank") || bName.includes("tcb")) bankCode = "techcombank";
+                              else if (bName.includes("bidv")) bankCode = "bidv";
+                              else if (bName.includes("vietin")) bankCode = "vietinbank";
+                              else if (bName.includes("agribank")) bankCode = "agribank";
+                              else if (bName.includes("tpbank")) bankCode = "tpbank";
+                              else if (bName.includes("vpbank")) bankCode = "vpbank";
+                              else if (bName.includes("acb")) bankCode = "acb";
+                              else if (bName.includes("sacombank")) bankCode = "sacombank";
+                              const accName = encodeURIComponent(bankAccountName || name || "TRO GIANG");
+                              const vietqrUrl = `https://img.vietqr.io/image/${bankCode}-${cleanAcc}-compact2.png?amount=0&accountName=${accName}`;
+                              setQrCodeUrl(vietqrUrl);
+                            }}
+                            className="px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 font-bold rounded-xl cursor-pointer flex items-center gap-1.5 transition-colors shadow-2xs"
+                            title="Tự động sinh mã VietQR từ số tài khoản"
+                          >
+                            <QrCode className="w-3.5 h-3.5 text-blue-700" />
+                            <span>Tạo nhanh mã VietQR</span>
+                          </button>
+                        )}
+
+                        {qrCodeUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setQrCodeUrl("")}
+                            className="px-2.5 py-2 text-rose-600 hover:bg-rose-50 rounded-xl font-bold cursor-pointer transition-colors"
+                          >
+                            Gỡ ảnh
+                          </button>
+                        )}
+                      </div>
+
+                      <p className="text-[11px] text-slate-500">
+                        Hỗ trợ ảnh QR tải từ ứng dụng ngân hàng của trợ giảng (VietQR, MB, Techcombank, VCB...).
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Footer Modal */}
               <div className="flex items-center justify-end gap-2 pt-3 border-t-2 border-slate-100">
                 <button
@@ -944,6 +1296,50 @@ export const AssistantsView: React.FC<AssistantsViewProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox Modal: Preview QR Code */}
+      {previewQrModal && (
+        <div className="fixed inset-0 z-[120] bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl border-2 border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="text-left">
+                <span className="text-[10px] uppercase font-black tracking-wider text-amber-700 block">
+                  Mã QR Số Tài Khoản
+                </span>
+                <h4 className="font-black text-slate-900 text-sm">{previewQrModal.name}</h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewQrModal(null)}
+                className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-white p-3 rounded-2xl border-2 border-amber-300 shadow-inner flex flex-col items-center justify-center">
+              <img
+                src={previewQrModal.qrUrl}
+                alt="QR Code"
+                className="w-64 h-64 object-contain rounded-xl"
+              />
+              <p className="mt-2 text-xs font-mono font-bold text-slate-800 break-all px-2">
+                {previewQrModal.bankInfo}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setPreviewQrModal(null)}
+                className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-colors cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
           </div>
         </div>
       )}

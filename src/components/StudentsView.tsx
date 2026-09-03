@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Search,
   Plus,
@@ -49,6 +49,14 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ currentUser }) => {
   const reload = () => {
     setStudents(storageService.getStudents());
   };
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      setStudents(storageService.getStudents());
+    };
+    window.addEventListener("clb-storage-updated", handleUpdate);
+    return () => window.removeEventListener("clb-storage-updated", handleUpdate);
+  }, []);
 
   const handleOpenAdd = () => {
     setEditingStudent(null);

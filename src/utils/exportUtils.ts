@@ -296,4 +296,34 @@ Trân trọng gửi quý phụ huynh theo dõi và đồng hành cùng các con!
 📌 BTVN buổi tới: ${report.homeworkAssigned || "Theo phiếu phát trên lớp"}
 Trân trọng gửi quý phụ huynh!`;
   },
+
+  // Safe clipboard copy with fallback for iframes and restrictive environments
+  async copyToClipboard(text: string): Promise<boolean> {
+    try {
+      if (navigator?.clipboard?.writeText && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (e) {
+      console.warn("navigator.clipboard.writeText failed, falling back to execCommand", e);
+    }
+
+    try {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.left = "-9999px";
+      textarea.style.top = "-9999px";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const successful = document.execCommand("copy");
+      document.body.removeChild(textarea);
+      return successful;
+    } catch (err) {
+      console.error("Clipboard copy failed:", err);
+      return false;
+    }
+  },
 };

@@ -1,14 +1,10 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
-import { fileURLToPath } from "url";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 
 dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // In-memory + file-backed shared storage for cross-device sync
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -50,6 +46,7 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json({ limit: "10mb" }));
+  app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
   // Helper to initialize Gemini
   function getGeminiClient(customApiKey?: string) {
@@ -741,7 +738,8 @@ Thầy Thắng và đội ngũ trợ giảng sẽ tiếp tục bám sát từng 
         (data.classes?.length || 0) +
         (data.assistants?.length || 0) +
         (data.timetableSlots?.length || 0) +
-        (data.masterTimetableSlots?.length || 0);
+        (data.masterTimetableSlots?.length || 0) +
+        (data.assistantAttendance?.length || 0);
 
       const nowIso = new Date().toISOString();
       sharedCloudStore = {

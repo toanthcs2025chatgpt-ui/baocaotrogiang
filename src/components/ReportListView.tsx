@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Search,
   Filter,
@@ -104,6 +104,14 @@ export const ReportListView: React.FC<ReportListViewProps> = ({
   const reloadData = () => {
     setReports(storageService.getReports());
   };
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      setReports(storageService.getReports());
+    };
+    window.addEventListener("clb-storage-updated", handleUpdate);
+    return () => window.removeEventListener("clb-storage-updated", handleUpdate);
+  }, []);
 
   const handleApprove = async (report: Report) => {
     const updated: Report = {

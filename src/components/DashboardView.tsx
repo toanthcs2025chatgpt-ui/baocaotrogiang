@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Users,
   School,
@@ -32,10 +32,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onEditReport,
 }) => {
   const isAdmin = currentUser.role === "admin";
-  const students = storageService.getStudents();
-  const classes = storageService.getClasses();
-  const assistants = storageService.getAssistants();
-  const [reports, setReports] = useState<Report[]>(() => storageService.getReports());
+  const [dataVersion, setDataVersion] = useState(0);
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      setDataVersion((v) => v + 1);
+    };
+    window.addEventListener("clb-storage-updated", handleUpdate);
+    return () => window.removeEventListener("clb-storage-updated", handleUpdate);
+  }, []);
+
+  const students = useMemo(() => storageService.getStudents(), [dataVersion]);
+  const classes = useMemo(() => storageService.getClasses(), [dataVersion]);
+  const assistants = useMemo(() => storageService.getAssistants(), [dataVersion]);
+  const reports = useMemo(() => storageService.getReports(), [dataVersion]);
 
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
@@ -109,7 +119,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       updatedAt: new Date().toISOString().replace("T", " ").slice(0, 16),
     };
     storageService.saveReport(updated);
-    setReports(storageService.getReports());
+    setDataVersion((v) => v + 1);
     setSelectedReport(updated);
   };
 

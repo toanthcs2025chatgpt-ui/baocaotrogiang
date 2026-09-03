@@ -357,7 +357,7 @@ export const CreateReportView: React.FC<CreateReportViewProps> = ({
   } | null>(null);
   const [lastAutosave, setLastAutosave] = useState<string | null>(null);
 
-  // Update students when class changes
+  // Update students when class changes (safely preserves user-entered data)
   useEffect(() => {
     if (editingReport && editingReport.classId === classId) {
       setStudentRows(editingReport.students || []);
@@ -365,20 +365,44 @@ export const CreateReportView: React.FC<CreateReportViewProps> = ({
     }
 
     const filtered = allStudents.filter((s) => s.classId === classId);
-    const rows: StudentReportItem[] = filtered.map((s) => ({
-      studentId: s.id,
-      studentName: s.name,
-      attendance: "present",
-      homework: "completed",
-      comprehension: "good",
-      attitude: "active",
-      comment: "",
-      homeworkScore: 9,
-      quickTags: ["Đi học đầy đủ"],
-      bonusPoints: 0,
-      avatar: s.avatar,
-    }));
-    setStudentRows(rows);
+    setStudentRows((prevRows) => {
+      // If user has already entered data for this class, preserve all modified fields
+      if (prevRows.length > 0 && prevRows.some((r) => filtered.some((s) => s.id === r.studentId))) {
+        return filtered.map((s) => {
+          const existing = prevRows.find((r) => r.studentId === s.id);
+          if (existing) {
+            return { ...existing, studentName: s.name, avatar: s.avatar || existing.avatar };
+          }
+          return {
+            studentId: s.id,
+            studentName: s.name,
+            attendance: "present",
+            homework: "completed",
+            comprehension: "good",
+            attitude: "active",
+            comment: "",
+            homeworkScore: 9,
+            quickTags: ["Đi học đầy đủ"],
+            bonusPoints: 0,
+            avatar: s.avatar,
+          };
+        });
+      }
+
+      return filtered.map((s) => ({
+        studentId: s.id,
+        studentName: s.name,
+        attendance: "present",
+        homework: "completed",
+        comprehension: "good",
+        attitude: "active",
+        comment: "",
+        homeworkScore: 9,
+        quickTags: ["Đi học đầy đủ"],
+        bonusPoints: 0,
+        avatar: s.avatar,
+      }));
+    });
   }, [classId, editingReport, allStudents]);
 
   // Autosave draft every 15s

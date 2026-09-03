@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   School,
   Plus,
@@ -53,6 +53,15 @@ export const ClassesView: React.FC<ClassesViewProps> = ({ currentUser, onSelectC
     setClasses(storageService.getClasses());
     setStudents(storageService.getStudents());
   };
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      setClasses(storageService.getClasses());
+      setStudents(storageService.getStudents());
+    };
+    window.addEventListener("clb-storage-updated", handleUpdate);
+    return () => window.removeEventListener("clb-storage-updated", handleUpdate);
+  }, []);
 
   const handleOpenAdd = () => {
     setEditingClass(null);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, Suspense } from "react";
 import { User, TabType, Report, ClassItem, Student } from "./types";
 import { storageService } from "./services/storage";
 import { classService } from "./services/classService";
@@ -8,17 +8,33 @@ import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { DashboardView } from "./components/DashboardView";
 import { CreateReportView } from "./components/CreateReportView";
-import { ReportListView } from "./components/ReportListView";
-import { StudentsView } from "./components/StudentsView";
-import { ClassesView } from "./components/ClassesView";
-import { AssistantsView } from "./components/AssistantsView";
-import { StatisticsView } from "./components/StatisticsView";
-import { SettingsView } from "./components/SettingsView";
-import { ScheduleView } from "./components/ScheduleView";
 import { LoginModal } from "./components/LoginModal";
 import { LoginPage } from "./components/LoginPage";
 import { ChangePasswordModal } from "./components/ChangePasswordModal";
 import { ReportDetailModal } from "./components/ReportDetailModal";
+
+// Lazy-load secondary views to reduce initial bundle size and speed up first render
+const ReportListView = React.lazy(() =>
+  import("./components/ReportListView").then((m) => ({ default: m.ReportListView }))
+);
+const StudentsView = React.lazy(() =>
+  import("./components/StudentsView").then((m) => ({ default: m.StudentsView }))
+);
+const ClassesView = React.lazy(() =>
+  import("./components/ClassesView").then((m) => ({ default: m.ClassesView }))
+);
+const AssistantsView = React.lazy(() =>
+  import("./components/AssistantsView").then((m) => ({ default: m.AssistantsView }))
+);
+const StatisticsView = React.lazy(() =>
+  import("./components/StatisticsView").then((m) => ({ default: m.StatisticsView }))
+);
+const SettingsView = React.lazy(() =>
+  import("./components/SettingsView").then((m) => ({ default: m.SettingsView }))
+);
+const ScheduleView = React.lazy(() =>
+  import("./components/ScheduleView").then((m) => ({ default: m.ScheduleView }))
+);
 
 export function App() {
   // Current user session: if null, show LoginPage
@@ -43,6 +59,22 @@ export function App() {
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [syncToastMsg, setSyncToastMsg] = useState<string | null>(null);
   const [dataVersion, setDataVersion] = useState(0);
+
+  // Cached data lists memoized to avoid unwanted re-renders and reference invalidation
+  const cachedClasses = useMemo(() => storageService.getClasses(), [dataVersion]);
+  const cachedAssistants = useMemo(() => storageService.getAssistants(), [dataVersion]);
+  const cachedAllStudents = useMemo(() => storageService.getStudents(), [dataVersion]);
+
+  // Listen for local mutations across tabs or internal updates
+  useEffect(() => {
+    const handleStorageUpdate = () => {
+      setDataVersion((v) => v + 1);
+    };
+    window.addEventListener("clb-storage-updated", handleStorageUpdate);
+    return () => {
+      window.removeEventListener("clb-storage-updated", handleStorageUpdate);
+    };
+  }, []);
 
   // Real-time Firestore subscriptions for live multi-device updates (PC, Mobile, Tablet)
   useEffect(() => {
@@ -240,7 +272,7 @@ export function App() {
         />
 
         {/* Dynamic Main Content Area */}
-        <main key={`data_v_${dataVersion}`} className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-slate-100">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-slate-100">
           <div className="max-w-7xl mx-auto">
             {/* Auto Cloud & Drive Sync Success Banner */}
             {syncToastMsg && (
@@ -291,76 +323,85 @@ export function App() {
               </div>
             )}
 
-            {/* Dashboard - Admin only */}
-            {isAdmin && activeTab === "dashboard" && (
-              <DashboardView
-                currentUser={currentUser}
-                onNavigateTab={(tab) => setActiveTab(tab)}
-                onEditReport={handleEditReport}
-              />
-            )}
+            <Suspense
+              fallback={
+                <div className="flex items-center justify-center p-16 text-slate-500 font-semibold text-xs gap-3">
+                  <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                  <span>Đang tải màn hình...</span>
+                </div>
+              }
+            >
+              {/* Dashboard - Admin only */}
+              {isAdmin && activeTab === "dashboard" && (
+                <DashboardView
+                  currentUser={currentUser}
+                  onNavigateTab={(tab) => setActiveTab(tab)}
+                  onEditReport={handleEditReport}
+                />
+              )}
 
-            {/* Timetable / Thời Khóa Biểu - Available for Admin & Assistant */}
-            {activeTab === "schedule" && (
-              <ScheduleView
-                currentUser={currentUser}
-                onNavigateCreateReport={handleCreateReportFromSchedule}
-              />
-            )}
+              {/* Timetable / Thời Khóa Biểu - Available for Admin & Assistant */}
+              {activeTab === "schedule" && (
+                <ScheduleView
+                  currentUser={currentUser}
+                  onNavigateCreateReport={handleCreateReportFromSchedule}
+                />
+              )}
 
-            {/* Create Report - Available for Admin & Assistant */}
-            {activeTab === "create_report" && (
-              <CreateReportView
-                currentUser={currentUser}
-                classes={storageService.getClasses()}
-                assistants={storageService.getAssistants()}
-                allStudents={storageService.getStudents()}
-                editingReport={editingReport}
-                onCancelEdit={handleCancelReport}
-                onReportSaved={handleSavedReport}
-              />
-            )}
+              {/* Create Report - Available for Admin & Assistant */}
+              {activeTab === "create_report" && (
+                <CreateReportView
+                  currentUser={currentUser}
+                  classes={cachedClasses}
+                  assistants={cachedAssistants}
+                  allStudents={cachedAllStudents}
+                  editingReport={editingReport}
+                  onCancelEdit={handleCancelReport}
+                  onReportSaved={handleSavedReport}
+                />
+              )}
 
-            {/* Reports History - Available for Admin & Assistant (Scoped to assistant's own reports) */}
-            {activeTab === "reports_history" && (
-              <ReportListView
-                currentUser={currentUser}
-                onNavigateCreate={() => {
-                  setEditingReport(null);
-                  setActiveTab("create_report");
-                }}
-                onEditReport={handleEditReport}
-              />
-            )}
+              {/* Reports History - Available for Admin & Assistant (Scoped to assistant's own reports) */}
+              {activeTab === "reports_history" && (
+                <ReportListView
+                  currentUser={currentUser}
+                  onNavigateCreate={() => {
+                    setEditingReport(null);
+                    setActiveTab("create_report");
+                  }}
+                  onEditReport={handleEditReport}
+                />
+              )}
 
-            {/* Admin-only Views */}
-            {isAdmin && activeTab === "students" && (
-              <StudentsView currentUser={currentUser} />
-            )}
+              {/* Admin-only Views */}
+              {isAdmin && activeTab === "students" && (
+                <StudentsView currentUser={currentUser} />
+              )}
 
-            {isAdmin && activeTab === "classes" && (
-              <ClassesView currentUser={currentUser} />
-            )}
+              {isAdmin && activeTab === "classes" && (
+                <ClassesView currentUser={currentUser} />
+              )}
 
-            {isAdmin && activeTab === "assistants" && (
-              <AssistantsView
-                currentUser={currentUser}
-                onSwitchUser={handleUserChange}
-              />
-            )}
+              {isAdmin && activeTab === "assistants" && (
+                <AssistantsView
+                  currentUser={currentUser}
+                  onSwitchUser={handleUserChange}
+                />
+              )}
 
-            {isAdmin && activeTab === "statistics" && (
-              <StatisticsView />
-            )}
+              {isAdmin && activeTab === "statistics" && (
+                <StatisticsView />
+              )}
 
-            {isAdmin && activeTab === "settings" && (
-              <SettingsView
-                currentUser={currentUser}
-                onResetDemo={handleResetDemo}
-                onWipeData={handleWipeData}
-                onUserUpdate={handleUserChange}
-              />
-            )}
+              {isAdmin && activeTab === "settings" && (
+                <SettingsView
+                  currentUser={currentUser}
+                  onResetDemo={handleResetDemo}
+                  onWipeData={handleWipeData}
+                  onUserUpdate={handleUserChange}
+                />
+              )}
+            </Suspense>
           </div>
         </main>
       </div>

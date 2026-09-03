@@ -34,9 +34,13 @@ import {
   HelpCircle,
   FileText,
   X,
+  QrCode,
+  Upload,
+  Maximize2,
 } from "lucide-react";
 import { Assistant, Report, TimetableSlot, ClassItem } from "../types";
 import { storageService } from "../services/storage";
+import { compressImageFile } from "../utils/imageUtils";
 import * as XLSX from "xlsx";
 
 interface AssistantPayrollRecord {
@@ -45,6 +49,10 @@ interface AssistantPayrollRecord {
   phone: string;
   email: string;
   bankInfo?: string;
+  bankName?: string;
+  bankAccountNumber?: string;
+  bankAccountName?: string;
+  qrCodeUrl?: string;
   assignedClasses: string[];
   totalSessions: number;
   completedSessions: number;
@@ -92,10 +100,22 @@ const formatMonthDisplay = (ym: string): string => {
 export const AssistantPayrollSection: React.FC<AssistantPayrollSectionProps> = ({
   initialMonth,
 }) => {
-  const assistants = storageService.getAssistants();
-  const classes = storageService.getClasses();
-  const reports = storageService.getReports();
-  const timetableSlots = storageService.getTimetableSlots();
+  const [dataVersion, setDataVersion] = useState(0);
+  const [assistants, setAssistants] = useState<Assistant[]>(() => storageService.getAssistants());
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      setAssistants(storageService.getAssistants());
+      setDataVersion((v) => v + 1);
+    };
+    window.addEventListener("clb-storage-updated", handleUpdate);
+    return () => window.removeEventListener("clb-storage-updated", handleUpdate);
+  }, []);
+
+  const classes = useMemo(() => storageService.getClasses(), [dataVersion]);
+  const attendanceRecords = useMemo(() => storageService.getAssistantAttendance(), [dataVersion]);
+  const settings = useMemo(() => storageService.getTimetableSettings(), [dataVersion]);
+  const shifts = settings.shifts;
 
   // Current selected month: default to current month YYYY-MM
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
@@ -130,6 +150,7 @@ export const AssistantPayrollSection: React.FC<AssistantPayrollSectionProps> = (
         paymentMethod?: "transfer" | "cash";
         notes?: string;
         bankInfo?: string;
+        qrCodeUrl?: string;
       }
     >
   >(() => {
@@ -146,6 +167,12 @@ export const AssistantPayrollSection: React.FC<AssistantPayrollSectionProps> = (
   const [selectedAssistantDetail, setSelectedAssistantDetail] = useState<AssistantPayrollRecord | null>(null);
   const [editingAssistant, setEditingAssistant] = useState<AssistantPayrollRecord | null>(null);
   const [viewingPayslip, setViewingPayslip] = useState<AssistantPayrollRecord | null>(null);
+  const [zoomQrModal, setZoomQrModal] = useState<{
+    name: string;
+    qrUrl: string;
+    bankInfo: string;
+    netSalary: number;
+  } | null>(null);
   const [copiedToast, setCopiedToast] = useState(false);
   const [showMonthPickerModal, setShowMonthPickerModal] = useState(false);
   const [pickerYear, setPickerYear] = useState<number>(() => {
@@ -196,6 +223,7 @@ export const AssistantPayrollSection: React.FC<AssistantPayrollSectionProps> = (
       paymentMethod: "transfer" | "cash";
       notes: string;
       bankInfo: string;
+      qrCodeUrl: string;
     }>
   ) => {
     const next = {
@@ -213,6 +241,44 @@ export const AssistantPayrollSection: React.FC<AssistantPayrollSectionProps> = (
     }
   };
 
+  // Upload QR image directly from Payslip modal or Adjustment modal
+  const handleUploadQrForPayslip = async (
+    assistantId: string,
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const qrUrl = await compressImageFile(file, {
+        maxWidth: 600,
+        maxHeight: 600,
+        quality: 0.82,
+      });
+
+      saveAdjustment(assistantId, { qrCodeUrl: qrUrl });
+
+      const currentAssistants = storageService.getAssistants();
+      const targetAsst = currentAssistants.find((a) => a.id === assistantId);
+      if (targetAsst) {
+        storageService.saveAssistant({
+          ...targetAsst,
+          qrCodeUrl: qrUrl,
+        });
+        setAssistants(storageService.getAssistants());
+      }
+
+      if (viewingPayslip && viewingPayslip.assistantId === assistantId) {
+        setViewingPayslip({
+          ...viewingPayslip,
+          qrCodeUrl: qrUrl,
+        });
+      }
+    } catch (err) {
+      console.warn("Failed to compress QR image:", err);
+    }
+  };
+
   // Save global default session rate
   const handleUpdateDefaultRate = (newRate: number) => {
     setDefaultSessionRate(newRate);
@@ -224,104 +290,42 @@ export const AssistantPayrollSection: React.FC<AssistantPayrollSectionProps> = (
   // Available months from timetable and reports
   const availableMonths = useMemo(() => {
     const months = new Set<string>();
-    // Default current month
     const now = new Date();
-    const curYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    months.add(curYM);
-
-    timetableSlots.forEach((slot) => {
-      if (slot.date) {
-        months.add(slot.date.slice(0, 7));
+    months.add(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
+    attendanceRecords.forEach((record) => {
+      if (record.date) {
+        months.add(record.date.slice(0, 7));
       }
     });
-    reports.forEach((rep) => {
-      if (rep.date) {
-        months.add(rep.date.slice(0, 7));
-      }
-    });
-
     return Array.from(months).sort().reverse();
-  }, [timetableSlots, reports]);
+  }, [attendanceRecords]);
 
   // Compute payroll records for all assistants
   const payrollRecords = useMemo(() => {
     const list: AssistantPayrollRecord[] = [];
-
     assistants.forEach((asst) => {
-      // Find all timetable slots where this assistant was assigned in this month
-      const assistantSlots = timetableSlots.filter((slot) => {
-        if (!slot.date || !slot.date.startsWith(selectedMonth)) return false;
-        // Match by assistantId or normalized name
-        const matchId = slot.assistantId === asst.id;
-        const matchName =
-          slot.assistantName &&
-          slot.assistantName.toLowerCase().includes(asst.name.toLowerCase().trim());
-        return matchId || matchName;
+      // Find all attendance records where this assistant is present in this month
+      const assistantAttendances = attendanceRecords.filter((rec) => {
+        if (!rec.date || !rec.date.startsWith(selectedMonth)) return false;
+        return rec.assistantIds.includes(asst.id);
       });
 
-      // Also check reports for this month that might be submitted by or assigned to this assistant
-      const assistantReports = reports.filter((rep) => {
-        if (!rep.date || !rep.date.startsWith(selectedMonth)) return false;
-        const matchName =
-          rep.assistantName &&
-          rep.assistantName.toLowerCase().includes(asst.name.toLowerCase().trim());
-        return matchName;
-      });
-
-      // Combine and eliminate duplicate sessions by date + class
-      const sessionMap = new Map<
-        string,
-        {
-          id: string;
-          date: string;
-          className: string;
-          shiftName: string;
-          lessonTopic: string;
-          hasReport: boolean;
-          reportStatus?: string;
-        }
-      >();
-
-      assistantSlots.forEach((s) => {
-        const key = `${s.date}_${s.classId || s.className}_${s.shiftId}`;
-        const rep = assistantReports.find(
-          (r) =>
-            r.date === s.date &&
-            (r.classId === s.classId || r.className === s.className)
-        );
-        sessionMap.set(key, {
-          id: s.id,
-          date: s.date,
-          className: s.className,
-          shiftName: s.shiftId,
-          lessonTopic: s.lessonTopic || "Bài giảng theo chương trình",
-          hasReport: !!rep,
-          reportStatus: rep?.status,
-        });
-      });
-
-      assistantReports.forEach((r) => {
-        const key = `${r.date}_${r.classId || r.className}_${r.shift}`;
-        if (!sessionMap.has(key)) {
-          sessionMap.set(key, {
-            id: r.id,
-            date: r.date,
-            className: r.className,
-            shiftName: r.shift,
-            lessonTopic: r.lessonContent?.slice(0, 50) || "Báo cáo ca dạy",
-            hasReport: true,
-            reportStatus: r.status,
-          });
-        }
-      });
-
-      const sessionList = Array.from(sessionMap.values()).sort(
-        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-      );
+      const sessionList = assistantAttendances.map(att => {
+        const shiftInfo = shifts.find(s => s.id === att.shiftId);
+        return {
+          id: att.id,
+          date: att.date,
+          className: "Ca dạy tại Trung tâm", // General since attendance is per shift now, not per class
+          shiftName: shiftInfo ? shiftInfo.name : att.shiftId,
+          lessonTopic: att.notes || "Điểm danh trợ giảng",
+          hasReport: true, // We don't use reports for this anymore
+          reportStatus: "approved",
+        };
+      }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
       const totalSessions = sessionList.length;
-      const completedSessions = sessionList.filter((s) => s.hasReport).length;
-      const pendingReportSessions = totalSessions - completedSessions;
+      const completedSessions = totalSessions;
+      const pendingReportSessions = 0;
 
       // Adjustments for this assistant
       const adj = payrollAdjustments[asst.id] || {};
@@ -329,7 +333,6 @@ export const AssistantPayrollSection: React.FC<AssistantPayrollSectionProps> = (
       const allowance = adj.allowance ?? 0;
       const bonus = adj.bonus ?? 0;
       const deduction = adj.deduction ?? 0;
-
       const sessionSalary = totalSessions * ratePerSession;
       const netSalary = Math.max(0, sessionSalary + allowance + bonus - deduction);
 
@@ -340,12 +343,23 @@ export const AssistantPayrollSection: React.FC<AssistantPayrollSectionProps> = (
         })
         .filter(Boolean);
 
+      const formattedBankInfo =
+        adj.bankInfo ||
+        (asst.bankAccountNumber
+          ? `${asst.bankName || "MB Bank"} - ${asst.bankAccountNumber} - ${(asst.bankAccountName || asst.name).toUpperCase()}`
+          : "MB Bank - 9999.8888.66 - " + asst.name.toUpperCase());
+      const assistantQrCode = adj.qrCodeUrl || asst.qrCodeUrl;
+
       list.push({
         assistantId: asst.id,
         assistantName: asst.name,
         phone: asst.phone,
         email: asst.email,
-        bankInfo: adj.bankInfo || "MB Bank - 9999.8888.66 - " + asst.name.toUpperCase(),
+        bankInfo: formattedBankInfo,
+        bankName: asst.bankName || "MB Bank",
+        bankAccountNumber: asst.bankAccountNumber || "9999888866",
+        bankAccountName: (asst.bankAccountName || asst.name).toUpperCase(),
+        qrCodeUrl: assistantQrCode,
         assignedClasses: assignedClassNames,
         totalSessions,
         completedSessions,
@@ -368,8 +382,8 @@ export const AssistantPayrollSection: React.FC<AssistantPayrollSectionProps> = (
   }, [
     assistants,
     classes,
-    timetableSlots,
-    reports,
+    attendanceRecords,
+    shifts,
     selectedMonth,
     defaultSessionRate,
     payrollAdjustments,
@@ -1092,6 +1106,25 @@ CLB TOÁN THẦY THẮNG • Hotline: 0988.123.456`;
                           <Receipt className="w-4 h-4 text-emerald-800" />
                         </button>
 
+                        {/* Quick View QR code for payment */}
+                        {rec.qrCodeUrl ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setZoomQrModal({
+                                name: rec.assistantName,
+                                qrUrl: rec.qrCodeUrl!,
+                                bankInfo: rec.bankInfo || "",
+                                netSalary: rec.netSalary,
+                              })
+                            }
+                            className="p-1.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 transition-colors cursor-pointer"
+                            title="Quét mã QR chuyển tiền nhanh"
+                          >
+                            <QrCode className="w-4 h-4 text-amber-800" />
+                          </button>
+                        ) : null}
+
                         {/* Copy for Zalo */}
                         <button
                           type="button"
@@ -1557,21 +1590,140 @@ CLB TOÁN THẦY THẮNG • Hotline: 0988.123.456`;
                 </table>
               </div>
 
-              {/* Bank Transfer details */}
-              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs space-y-1">
-                <div className="font-bold text-amber-950 flex items-center gap-1.5">
-                  <CreditCard className="w-3.5 h-3.5 text-amber-700" />
-                  <span>Thông tin chuyển khoản:</span>
+              {/* THÔNG TIN THANH TOÁN & MÃ QR SỐ TÀI KHOẢN (GẮN TRÊN PHIẾU BÁO LƯƠNG CÁ NHÂN) */}
+              <div className="p-4 rounded-2xl bg-amber-50/90 border-2 border-amber-300 text-xs space-y-3 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <div className="font-black text-amber-950 text-xs uppercase flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-lg bg-amber-200 text-amber-900 flex items-center justify-center font-black">
+                      <QrCode className="w-3.5 h-3.5" />
+                    </div>
+                    <span>Thông tin thanh toán & Quét mã chuyển tiền</span>
+                  </div>
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-black ${
+                      viewingPayslip.paymentStatus === "paid"
+                        ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                        : "bg-amber-200/90 text-amber-950 border border-amber-300"
+                    }`}
+                  >
+                    {viewingPayslip.paymentStatus === "paid" ? "✓ Đã chuyển khoản" : "⏳ Chờ thanh toán"}
+                  </span>
                 </div>
-                <p className="font-mono font-bold text-slate-800">
-                  {viewingPayslip.bankInfo}
-                </p>
-                <p className="text-[11px] text-slate-600">
-                  Trạng thái:{" "}
-                  <strong className={viewingPayslip.paymentStatus === "paid" ? "text-emerald-700" : "text-amber-700"}>
-                    {viewingPayslip.paymentStatus === "paid" ? "Đã chuyển khoản" : "Chờ thanh toán"}
-                  </strong>
-                </p>
+
+                <div className="flex flex-col sm:flex-row items-center sm:items-start justify-between gap-4">
+                  {/* Left: Account details, amount & action buttons */}
+                  <div className="flex-1 space-y-2.5 w-full">
+                    <div className="bg-white/95 p-3.5 rounded-xl border border-amber-200 space-y-2 shadow-2xs">
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                          Tài khoản ngân hàng nhận lương:
+                        </span>
+                        <div className="font-mono font-black text-slate-900 text-xs sm:text-sm tracking-wide mt-0.5 flex items-center justify-between gap-2">
+                          <span className="break-all">{viewingPayslip.bankInfo}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(viewingPayslip.bankInfo || "");
+                              setCopiedToast(true);
+                              setTimeout(() => setCopiedToast(false), 2000);
+                            }}
+                            className="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 text-[10px] font-black rounded-lg transition-colors flex items-center gap-1 shrink-0 cursor-pointer print:hidden"
+                            title="Sao chép thông tin tài khoản"
+                          >
+                            <Copy className="w-3 h-3" />
+                            <span>Copy STK</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-amber-100 flex items-center justify-between">
+                        <span className="text-[11px] text-slate-500 font-bold">Số tiền cần thanh toán:</span>
+                        <span className="font-black text-emerald-800 text-base font-mono">
+                          {formatVND(viewingPayslip.netSalary)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* QR Action Buttons in Payslip (hidden when printing) */}
+                    <div className="flex flex-wrap items-center gap-2 print:hidden pt-0.5">
+                      <label className="text-[11px] text-amber-900 font-bold flex items-center gap-1.5 cursor-pointer bg-white px-3 py-1.5 rounded-xl border border-amber-300 hover:bg-amber-100 transition-colors shadow-2xs">
+                        <Upload className="w-3.5 h-3.5 text-amber-700" />
+                        <span>{viewingPayslip.qrCodeUrl ? "Đổi ảnh QR" : "Tải ảnh QR lên"}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleUploadQrForPayslip(viewingPayslip.assistantId, e)}
+                        />
+                      </label>
+
+                      {viewingPayslip.qrCodeUrl && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setZoomQrModal({
+                              name: viewingPayslip.assistantName,
+                              qrUrl: viewingPayslip.qrCodeUrl!,
+                              bankInfo: viewingPayslip.bankInfo || "",
+                              netSalary: viewingPayslip.netSalary,
+                            })
+                          }
+                          className="text-[11px] text-blue-900 font-bold flex items-center gap-1.5 cursor-pointer bg-white px-3 py-1.5 rounded-xl border border-blue-200 hover:bg-blue-50 transition-colors shadow-2xs"
+                        >
+                          <Maximize2 className="w-3.5 h-3.5 text-blue-700" />
+                          <span>Phóng to mã QR</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right: QR Code Visual display */}
+                  <div className="flex flex-col items-center shrink-0">
+                    {viewingPayslip.qrCodeUrl ? (
+                      <div
+                        onClick={() =>
+                          setZoomQrModal({
+                            name: viewingPayslip.assistantName,
+                            qrUrl: viewingPayslip.qrCodeUrl!,
+                            bankInfo: viewingPayslip.bankInfo || "",
+                            netSalary: viewingPayslip.netSalary,
+                          })
+                        }
+                        className="relative group cursor-pointer bg-white p-2 rounded-2xl border-2 border-amber-400 shadow-md hover:shadow-lg transition-all text-center"
+                        title="Bấm để phóng to mã QR quét chuyển khoản"
+                      >
+                        <img
+                          src={viewingPayslip.qrCodeUrl}
+                          alt={`Mã QR ${viewingPayslip.assistantName}`}
+                          className="w-32 h-32 sm:w-36 sm:h-36 object-contain rounded-xl bg-white"
+                        />
+                        <div className="mt-1.5 flex items-center justify-center gap-1 text-[10px] font-black text-amber-900">
+                          <QrCode className="w-3 h-3 text-amber-700" />
+                          <span>Quét mã chuyển tiền</span>
+                        </div>
+                        {/* Hover overlay on desktop (hidden when printing) */}
+                        <div className="absolute inset-0 bg-slate-900/60 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white print:hidden">
+                          <Maximize2 className="w-6 h-6 mb-1 text-amber-300" />
+                          <span className="text-[10px] font-bold">Phóng to QR</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="w-32 h-32 sm:w-36 sm:h-36 rounded-2xl border-2 border-dashed border-amber-300 bg-white flex flex-col items-center justify-center p-3 text-center">
+                        <QrCode className="w-10 h-10 text-amber-300 mb-1" />
+                        <span className="text-[10px] font-bold text-amber-950">Chưa có ảnh QR</span>
+                        <label className="mt-2 text-[10px] font-black text-blue-700 hover:underline cursor-pointer">
+                          Tải ảnh ngay
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => handleUploadQrForPayslip(viewingPayslip.assistantId, e)}
+                          />
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {/* Signatures */}
@@ -1609,11 +1761,69 @@ CLB TOÁN THẦY THẮNG • Hotline: 0988.123.456`;
         </div>
       )}
 
+      {/* MODAL: ZOOM QR CODE FOR PAYMENT */}
+      {zoomQrModal && (
+        <div className="fixed inset-0 z-[120] bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl border-2 border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="text-left">
+                <span className="text-[10px] uppercase font-black tracking-wider text-amber-700 block">
+                  Mã QR Chuyển Lương
+                </span>
+                <h4 className="font-black text-slate-900 text-sm">{zoomQrModal.name}</h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setZoomQrModal(null)}
+                className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-white p-3 rounded-2xl border-2 border-amber-300 shadow-inner flex flex-col items-center justify-center">
+              <img
+                src={zoomQrModal.qrUrl}
+                alt="QR Code"
+                className="w-64 h-64 object-contain rounded-xl"
+              />
+              <div className="mt-3 w-full bg-amber-50 p-2.5 rounded-xl border border-amber-200 text-center space-y-0.5">
+                <div className="text-[10px] font-bold text-slate-500">Số tiền chuyển:</div>
+                <div className="font-mono font-black text-emerald-800 text-lg">
+                  {formatVND(zoomQrModal.netSalary)}
+                </div>
+                <div className="text-[11px] font-mono font-bold text-slate-800 break-all pt-1">
+                  {zoomQrModal.bankInfo}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              <a
+                href={zoomQrModal.qrUrl}
+                download={`QR_Luong_${zoomQrModal.name}.png`}
+                className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5 shadow-xs"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Tải ảnh QR</span>
+              </a>
+              <button
+                type="button"
+                onClick={() => setZoomQrModal(null)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-colors cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* TOAST COPIED */}
       {copiedToast && (
         <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-2xl shadow-xl border border-slate-700 flex items-center gap-2 text-xs font-black animate-in fade-in slide-in-from-bottom-4">
           <Check className="w-4 h-4 text-emerald-400" />
-          <span>Đã sao chép phiếu lương thành công! Có thể dán ngay vào Zalo.</span>
+          <span>Đã sao chép thông tin thành công!</span>
         </div>
       )}
     </div>

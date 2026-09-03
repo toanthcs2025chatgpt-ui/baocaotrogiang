@@ -214,10 +214,14 @@ export const StatisticsView: React.FC = () => {
       csv += `${idx + 1},"${item.date}","${item.className}","${item.studentName}","${att}","${hw}",${item.homeworkScore ?? "-"},"${comp}","${attd}","${item.assistantName}","${(item.comment || "").replace(/"/g, '""')}"\n`;
     });
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
+    link.href = url;
     link.download = `Thong_Ke_CLB_Toan_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const handleExportPDF = () => {
@@ -291,22 +295,7 @@ export const StatisticsView: React.FC = () => {
             <span>Điểm Danh & Học Phí Học Sinh</span>
           </button>
 
-          {/* Sub-tab 3: Bảng Lương Trợ Giảng */}
-          <button
-            type="button"
-            onClick={() => setActiveSubTab("payroll")}
-            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl font-black text-xs sm:text-sm transition-all cursor-pointer ${
-              activeSubTab === "payroll"
-                ? "bg-emerald-800 text-white shadow-md border border-emerald-900"
-                : "bg-slate-100 text-slate-700 hover:bg-emerald-100 hover:text-emerald-900 border border-slate-200"
-            }`}
-          >
-            <Wallet className="w-4 h-4 text-emerald-400" />
-            <span>Bảng Lương Trợ Giảng</span>
-            <span className="px-2 py-0.5 rounded-xl bg-amber-400 text-slate-950 text-[10px] font-black uppercase tracking-wider">
-              Mới
-            </span>
-          </button>
+          
         </div>
 
         <div className="text-xs text-slate-500 font-bold px-2 hidden lg:block">
@@ -573,17 +562,10 @@ export const StatisticsView: React.FC = () => {
         </div>
       )}
 
-      {/* VIEW CONTENT 2: ATTENDANCE & TUITION MATRIX REPORT */}
+            {/* VIEW CONTENT 2: ATTENDANCE & TUITION MATRIX REPORT */}
       {activeSubTab === "tuition" && (
         <div className="animate-in fade-in duration-200">
           <AttendanceReportSection initialClassId={selectedClass} />
-        </div>
-      )}
-
-      {/* VIEW CONTENT 3: ASSISTANT PAYROLL SECTION */}
-      {activeSubTab === "payroll" && (
-        <div className="animate-in fade-in duration-200">
-          <AssistantPayrollSection initialMonth={selectedMonth !== "all" ? selectedMonth : undefined} />
         </div>
       )}
     </div>
