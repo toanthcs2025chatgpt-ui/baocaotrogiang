@@ -45,6 +45,8 @@ import {
   Camera,
   Layers,
   Users,
+  List,
+  LayoutGrid,
 } from "lucide-react";
 import {
   Report,
@@ -178,6 +180,7 @@ export const CreateReportView: React.FC<CreateReportViewProps> = ({
   });
   const [showStudentCards, setShowStudentCards] = useState(false);
   const [showRollCallList, setShowRollCallList] = useState(false);
+  const [attendanceViewMode, setAttendanceViewMode] = useState<"list" | "grid">("list");
   const [isAssistantPickerOpen, setIsAssistantPickerOpen] = useState(false);
 
   // Attendance stats counts
@@ -1775,16 +1778,45 @@ export const CreateReportView: React.FC<CreateReportViewProps> = ({
           </div>
         </div>
 
-        {/* Quick action buttons toolbar */}
-        <div className="flex items-center justify-between gap-2 flex-wrap bg-slate-50 p-3 rounded-2xl border border-slate-200">
-          <span className="text-xs font-bold text-slate-700">
-            Thao tác nhanh điểm danh ca học:
-          </span>
+        {/* Quick action buttons toolbar & View Switcher */}
+        <div className="flex items-center justify-between gap-3 flex-wrap bg-slate-50 p-3 rounded-2xl border border-slate-200">
           <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-bold text-slate-700">
+              Chế độ hiển thị:
+            </span>
+            <div className="inline-flex items-center bg-slate-200/90 p-0.5 rounded-xl border border-slate-300 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setAttendanceViewMode("list")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                  attendanceViewMode === "list"
+                    ? "bg-white text-indigo-900 shadow-xs ring-1 ring-black/5"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <List className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>Dạng danh sách (List)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAttendanceViewMode("grid")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                  attendanceViewMode === "grid"
+                    ? "bg-white text-indigo-900 shadow-xs ring-1 ring-black/5"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>Dạng thẻ (Grid)</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap sm:ml-auto">
             <button
               type="button"
               onClick={handleSetAllPresent}
-              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center gap-1.5 shadow-2xs cursor-pointer transition-colors"
+              className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center gap-1.5 shadow-xs cursor-pointer transition-colors"
             >
               <Check className="w-3.5 h-3.5 stroke-[3]" />
               <span>Tất cả có mặt</span>
@@ -1792,132 +1824,339 @@ export const CreateReportView: React.FC<CreateReportViewProps> = ({
           </div>
         </div>
 
-        {/* Interactive Student Attendance Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
-          {studentRows.length > 0 ? (
-            studentRows.map((st, idx) => {
-              const isPresent = st.attendance === "present";
-              const isExcused = st.attendance === "excused";
-              const isUnexcused = st.attendance === "unexcused";
-              const isLate = st.attendance === "late";
+        {/* Attendance Display: LIST View (Default) or GRID View */}
+        {attendanceViewMode === "list" ? (
+          <div className="space-y-2 pt-1">
+            {/* Header row for Desktop/Tablet */}
+            <div className="hidden sm:flex items-center justify-between px-4 py-2.5 bg-slate-100/90 rounded-2xl text-[11px] font-black uppercase text-slate-600 tracking-wider border border-slate-200">
+              <div className="flex items-center gap-3 w-5/12">
+                <span className="w-10 text-center">STT</span>
+                <span>Học sinh</span>
+              </div>
+              <div className="w-2/12 text-center">
+                <span>Trạng thái</span>
+              </div>
+              <div className="w-5/12 text-right pr-2">
+                <span>Thao tác điểm danh nhanh</span>
+              </div>
+            </div>
 
-              return (
-                <div
-                  key={st.studentId}
-                  className={`p-3 rounded-2xl border-2 transition-all flex flex-col justify-between gap-2.5 ${
-                    isUnexcused
-                      ? "bg-rose-50/80 border-rose-300 ring-2 ring-rose-300/40"
-                      : isExcused
-                      ? "bg-amber-50/80 border-amber-300 ring-2 ring-amber-300/40"
-                      : isLate
-                      ? "bg-orange-50/80 border-orange-300 ring-2 ring-orange-300/40"
-                      : "bg-white border-slate-200 hover:border-slate-300"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-700 font-black text-base flex items-center justify-center shrink-0 overflow-hidden border-2 border-slate-200 shadow-xs">
+            {studentRows.length > 0 ? (
+              studentRows.map((st, idx) => {
+                const isPresent = st.attendance === "present";
+                const isExcused = st.attendance === "excused";
+                const isUnexcused = st.attendance === "unexcused";
+                const isLate = st.attendance === "late";
+
+                return (
+                  <div
+                    key={st.studentId}
+                    className={`p-3 sm:p-3.5 rounded-2xl border-2 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 ${
+                      isUnexcused
+                        ? "bg-rose-50/90 border-rose-300 ring-2 ring-rose-300/40 shadow-xs"
+                        : isExcused
+                        ? "bg-amber-50/90 border-amber-300 ring-2 ring-amber-300/40 shadow-xs"
+                        : isLate
+                        ? "bg-orange-50/90 border-orange-300 ring-2 ring-orange-300/40 shadow-xs"
+                        : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/60 shadow-2xs"
+                    }`}
+                  >
+                    {/* Left: STT (Yellow #FFFF3F 100%) + Avatar (Enlarged 2x: 80px) + Student Name */}
+                    <div className="flex items-center gap-3 sm:gap-3.5 min-w-0 sm:w-5/12">
+                      <span
+                        style={{ backgroundColor: "#FFFF3F" }}
+                        className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-slate-950 border-2 border-yellow-400 text-xs sm:text-sm font-black flex items-center justify-center shrink-0 shadow-xs select-none"
+                      >
+                        {idx + 1}
+                      </span>
+                      <div className="w-20 h-20 rounded-2xl bg-slate-100 text-slate-800 font-black text-2xl flex items-center justify-center shrink-0 overflow-hidden border-2 border-slate-200 shadow-xs relative select-none">
+                        <span className="select-none">
+                          {st.studentName ? st.studentName.charAt(0) : "H"}
+                        </span>
                         {st.avatar ? (
                           <img
                             src={st.avatar}
                             alt={st.studentName}
-                            className="w-full h-full object-cover"
+                            className="absolute inset-0 w-full h-full object-cover"
                             referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = "none";
+                            }}
                           />
-                        ) : (
-                          st.studentName.charAt(0)
-                        )}
+                        ) : null}
                       </div>
-                      <span className="font-black text-xs text-slate-900 leading-tight">
-                        {st.studentName}
+                      <div className="min-w-0 flex-1">
+                        <span className="font-black text-sm sm:text-base text-slate-900 leading-tight block truncate" title={st.studentName}>
+                          {st.studentName}
+                        </span>
+                        {/* Status tag visible on mobile */}
+                        <div className="sm:hidden mt-1">
+                          <span
+                            className={`inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${
+                              isPresent
+                                ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
+                                : isExcused
+                                ? "bg-amber-100 text-amber-950 border border-amber-300"
+                                : isUnexcused
+                                ? "bg-rose-100 text-rose-950 border border-rose-300"
+                                : "bg-orange-100 text-orange-950 border border-orange-300"
+                            }`}
+                          >
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                isPresent
+                                  ? "bg-emerald-500"
+                                  : isExcused
+                                  ? "bg-amber-500"
+                                  : isUnexcused
+                                  ? "bg-rose-500"
+                                  : "bg-orange-500"
+                              }`}
+                            />
+                            {isPresent
+                              ? "Có mặt"
+                              : isExcused
+                              ? "Nghỉ phép"
+                              : isUnexcused
+                              ? "Nghỉ K.Phép"
+                              : "Đi muộn"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Middle: Current Status Badge (on tablet/desktop) */}
+                    <div className="hidden sm:flex justify-center sm:w-2/12">
+                      <span
+                        className={`inline-flex items-center gap-1.5 text-xs font-black uppercase px-3 py-1 rounded-xl shadow-2xs ${
+                          isPresent
+                            ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
+                            : isExcused
+                            ? "bg-amber-100 text-amber-950 border border-amber-300"
+                            : isUnexcused
+                            ? "bg-rose-100 text-rose-950 border border-rose-300"
+                            : "bg-orange-100 text-orange-950 border border-orange-300"
+                        }`}
+                      >
+                        <span
+                          className={`w-2 h-2 rounded-full ${
+                            isPresent
+                              ? "bg-emerald-500"
+                              : isExcused
+                              ? "bg-amber-500"
+                              : isUnexcused
+                              ? "bg-rose-500"
+                              : "bg-orange-500"
+                          }`}
+                        />
+                        <span>
+                          {isPresent
+                            ? "Có mặt"
+                            : isExcused
+                            ? "Nghỉ phép"
+                            : isUnexcused
+                            ? "Nghỉ K.Phép"
+                            : "Đi muộn"}
+                        </span>
                       </span>
                     </div>
 
-                    {/* Status Badge */}
-                    <span
-                      className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${
-                        isPresent
-                          ? "bg-emerald-100 text-emerald-900 border border-emerald-200"
-                          : isExcused
-                          ? "bg-amber-200 text-amber-950 border border-amber-300"
-                          : isUnexcused
-                          ? "bg-rose-200 text-rose-950 border border-rose-300"
-                          : "bg-orange-200 text-orange-950 border border-orange-300"
-                      }`}
-                    >
-                      {isPresent
-                        ? "Có mặt"
+                    {/* Right: 4 Horizontal Roll Call Quick Buttons */}
+                    <div className="grid grid-cols-4 gap-1 sm:gap-1.5 sm:w-5/12 sm:justify-end">
+                      <button
+                        type="button"
+                        onClick={() => handleAttendanceChange(st.studentId, "present")}
+                        className={`py-1.5 px-1 sm:px-3 sm:py-2 rounded-xl text-[11px] sm:text-xs font-black transition-all cursor-pointer text-center flex items-center justify-center gap-1 whitespace-nowrap min-w-0 ${
+                          isPresent
+                            ? "bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-600/30 scale-102"
+                            : "bg-slate-100 text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 border border-slate-200"
+                        }`}
+                        title="Đánh dấu Có mặt"
+                      >
+                        <Check className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
+                        <span className="truncate">Có mặt</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleAttendanceChange(st.studentId, "excused")}
+                        className={`py-1.5 px-1 sm:px-3 sm:py-2 rounded-xl text-[11px] sm:text-xs font-black transition-all cursor-pointer text-center flex items-center justify-center gap-1 whitespace-nowrap min-w-0 ${
+                          isExcused
+                            ? "bg-amber-500 text-white shadow-xs ring-2 ring-amber-500/30 scale-102"
+                            : "bg-slate-100 text-slate-700 hover:bg-amber-50 hover:text-amber-800 border border-slate-200"
+                        }`}
+                        title="Đánh dấu Nghỉ có phép"
+                      >
+                        <span className="truncate">Nghỉ phép</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleAttendanceChange(st.studentId, "unexcused")}
+                        className={`py-1.5 px-1 sm:px-3 sm:py-2 rounded-xl text-[11px] sm:text-xs font-black transition-all cursor-pointer text-center flex items-center justify-center gap-1 whitespace-nowrap min-w-0 ${
+                          isUnexcused
+                            ? "bg-rose-600 text-white shadow-xs ring-2 ring-rose-600/30 scale-102"
+                            : "bg-slate-100 text-slate-700 hover:bg-rose-50 hover:text-rose-800 border border-slate-200"
+                        }`}
+                        title="Đánh dấu Nghỉ không phép"
+                      >
+                        <span className="truncate">K.phép</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleAttendanceChange(st.studentId, "late")}
+                        className={`py-1.5 px-1 sm:px-3 sm:py-2 rounded-xl text-[11px] sm:text-xs font-black transition-all cursor-pointer text-center flex items-center justify-center gap-1 whitespace-nowrap min-w-0 ${
+                          isLate
+                            ? "bg-orange-500 text-white shadow-xs ring-2 ring-orange-500/30 scale-102"
+                            : "bg-slate-100 text-slate-700 hover:bg-orange-50 hover:text-orange-800 border border-slate-200"
+                        }`}
+                        title="Đánh dấu Đi muộn"
+                      >
+                        <span className="truncate">Muộn</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="py-8 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl border border-slate-200">
+                Chưa có danh sách học sinh cho lớp học này.
+              </div>
+            )}
+          </div>
+        ) : (
+          /* Interactive Student Attendance Grid View */
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+            {studentRows.length > 0 ? (
+              studentRows.map((st, idx) => {
+                const isPresent = st.attendance === "present";
+                const isExcused = st.attendance === "excused";
+                const isUnexcused = st.attendance === "unexcused";
+                const isLate = st.attendance === "late";
+
+                return (
+                  <div
+                    key={st.studentId}
+                    className={`p-3 rounded-2xl border-2 transition-all flex flex-col justify-between gap-2.5 ${
+                      isUnexcused
+                        ? "bg-rose-50/80 border-rose-300 ring-2 ring-rose-300/40"
                         : isExcused
-                        ? "Nghỉ có phép"
-                        : isUnexcused
-                        ? "Nghỉ K.Phép"
-                        : "Đi muộn"}
-                    </span>
+                        ? "bg-amber-50/80 border-amber-300 ring-2 ring-amber-300/40"
+                        : isLate
+                        ? "bg-orange-50/80 border-orange-300 ring-2 ring-orange-300/40"
+                        : "bg-white border-slate-200 hover:border-slate-300"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-700 font-black text-base flex items-center justify-center shrink-0 overflow-hidden border-2 border-slate-200 shadow-xs relative select-none">
+                          <span className="select-none">
+                            {st.studentName ? st.studentName.charAt(0) : "H"}
+                          </span>
+                          {st.avatar ? (
+                            <img
+                              src={st.avatar}
+                              alt={st.studentName}
+                              className="absolute inset-0 w-full h-full object-cover"
+                              referrerPolicy="no-referrer"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = "none";
+                              }}
+                            />
+                          ) : null}
+                        </div>
+                        <span className="font-black text-xs text-slate-900 leading-tight">
+                          {st.studentName}
+                        </span>
+                      </div>
+
+                      {/* Status Badge */}
+                      <span
+                        className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${
+                          isPresent
+                            ? "bg-emerald-100 text-emerald-900 border border-emerald-200"
+                            : isExcused
+                            ? "bg-amber-200 text-amber-950 border border-amber-300"
+                            : isUnexcused
+                            ? "bg-rose-200 text-rose-950 border border-rose-300"
+                            : "bg-orange-200 text-orange-950 border border-orange-300"
+                        }`}
+                      >
+                        {isPresent
+                          ? "Có mặt"
+                          : isExcused
+                          ? "Nghỉ có phép"
+                          : isUnexcused
+                          ? "Nghỉ K.Phép"
+                          : "Đi muộn"}
+                      </span>
+                    </div>
+
+                    {/* 4 status toggle buttons */}
+                    <div className="grid grid-cols-4 gap-1 pt-1 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => handleAttendanceChange(st.studentId, "present")}
+                        className={`py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer text-center ${
+                          isPresent
+                            ? "bg-emerald-600 text-white shadow-2xs"
+                            : "bg-slate-100 text-slate-600 hover:bg-emerald-100 hover:text-emerald-900"
+                        }`}
+                        title="Có mặt"
+                      >
+                        Có mặt
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleAttendanceChange(st.studentId, "excused")}
+                        className={`py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer text-center ${
+                          isExcused
+                            ? "bg-amber-600 text-white shadow-2xs"
+                            : "bg-slate-100 text-slate-600 hover:bg-amber-100 hover:text-amber-900"
+                        }`}
+                        title="Nghỉ có phép"
+                      >
+                        Nghỉ phép
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleAttendanceChange(st.studentId, "unexcused")}
+                        className={`py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer text-center ${
+                          isUnexcused
+                            ? "bg-rose-600 text-white shadow-2xs"
+                            : "bg-slate-100 text-slate-600 hover:bg-rose-100 hover:text-rose-900"
+                        }`}
+                        title="Nghỉ học không phép"
+                      >
+                        K.phép
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleAttendanceChange(st.studentId, "late")}
+                        className={`py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer text-center ${
+                          isLate
+                            ? "bg-orange-600 text-white shadow-2xs"
+                            : "bg-slate-100 text-slate-600 hover:bg-orange-100 hover:text-orange-900"
+                        }`}
+                        title="Đi muộn"
+                      >
+                        Muộn
+                      </button>
+                    </div>
                   </div>
-
-                  {/* 4 status toggle buttons */}
-                  <div className="grid grid-cols-4 gap-1 pt-1 border-t border-slate-100">
-                    <button
-                      type="button"
-                      onClick={() => handleAttendanceChange(st.studentId, "present")}
-                      className={`py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer text-center ${
-                        isPresent
-                          ? "bg-emerald-600 text-white shadow-2xs"
-                          : "bg-slate-100 text-slate-600 hover:bg-emerald-100 hover:text-emerald-900"
-                      }`}
-                      title="Có mặt"
-                    >
-                      Có mặt
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleAttendanceChange(st.studentId, "excused")}
-                      className={`py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer text-center ${
-                        isExcused
-                          ? "bg-amber-600 text-white shadow-2xs"
-                          : "bg-slate-100 text-slate-600 hover:bg-amber-100 hover:text-amber-900"
-                      }`}
-                      title="Nghỉ có phép"
-                    >
-                      Nghỉ phép
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleAttendanceChange(st.studentId, "unexcused")}
-                      className={`py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer text-center ${
-                        isUnexcused
-                          ? "bg-rose-600 text-white shadow-2xs"
-                          : "bg-slate-100 text-slate-600 hover:bg-rose-100 hover:text-rose-900"
-                      }`}
-                      title="Nghỉ học không phép"
-                    >
-                      K.phép
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleAttendanceChange(st.studentId, "late")}
-                      className={`py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer text-center ${
-                        isLate
-                          ? "bg-orange-600 text-white shadow-2xs"
-                          : "bg-slate-100 text-slate-600 hover:bg-orange-100 hover:text-orange-900"
-                      }`}
-                      title="Đi muộn"
-                    >
-                      Muộn
-                    </button>
-                  </div>
-                </div>
-              );
-            })
-          ) : (
-            <div className="col-span-full py-8 text-center text-xs text-slate-400">
-              Chưa có danh sách học sinh cho lớp học này.
-            </div>
-          )}
-        </div>
+                );
+              })
+            ) : (
+              <div className="col-span-full py-8 text-center text-xs text-slate-400">
+                Chưa có danh sách học sinh cho lớp học này.
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* STEP 2: TIÊU CHÍ NHẬN XÉT CHUNG CA DẠY (MATCHING IMAGE 2 & IMAGE 3 EXACTLY) */}
