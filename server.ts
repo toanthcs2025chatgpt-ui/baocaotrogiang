@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import { firestore, safeGetFirestoreDoc, safeSetFirestoreDoc } from "./src/server-firebase";
 
 dotenv.config();
 
@@ -48,6 +49,17 @@ async function startServer() {
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
+  // Load from Firebase on start if configured
+  try {
+    const cloudData = await safeGetFirestoreDoc("cloudSync", "sharedStore");
+    if (cloudData && cloudData.version > sharedCloudStore.version) {
+      sharedCloudStore = cloudData as typeof sharedCloudStore;
+      console.log("Loaded newer sharedCloudStore from Firebase Firestore");
+    }
+  } catch (e) {
+    // Non-blocking fallback to local storage
+  }
+
   // Helper to initialize Gemini
   function getGeminiClient(customApiKey?: string) {
     const key = customApiKey?.trim() || process.env.GEMINI_API_KEY;
@@ -60,6 +72,143 @@ async function startServer() {
   // Health check
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
+
+  // Helper function to test a single Gemini API key
+  async function performKeyTest(targetKey?: string): Promise<{
+    success: boolean;
+    status: "valid" | "quota_exceeded" | "invalid" | "permission_denied" | "error";
+    latencyMs: number;
+    message: string;
+    sampleResponse?: string;
+    isDefaultKey: boolean;
+  }> {
+    const isDefaultKey = !targetKey || !targetKey.trim();
+    const keyToUse = targetKey?.trim() || process.env.GEMINI_API_KEY;
+
+    if (!keyToUse) {
+      return {
+        success: false,
+        status: "invalid",
+        latencyMs: 0,
+        message: "Chưa cấu hình API Key (không tìm thấy trong biến môi trường hoặc danh sách).",
+        isDefaultKey,
+      };
+    }
+
+    const startTime = Date.now();
+    try {
+      const ai = new GoogleGenAI({ apiKey: keyToUse });
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: "Xin chào, phản hồi duy nhất 1 chữ: OK",
+      });
+
+      const latencyMs = Date.now() - startTime;
+      const text = response.text?.trim() || "OK";
+
+      return {
+        success: true,
+        status: "valid",
+        latencyMs,
+        message: `Kết nối thành công! Phản hồi trong ${latencyMs}ms.`,
+        sampleResponse: text,
+        isDefaultKey,
+      };
+    } catch (err: any) {
+      const latencyMs = Date.now() - startTime;
+      const errMsg = (err.message || err.toString() || "").toLowerCase();
+      const errCode = err.status || err.code || 0;
+
+      let status: "quota_exceeded" | "invalid" | "permission_denied" | "error" = "error";
+      let userFriendlyMessage = `Lỗi kết nối: ${err.message || "Không xác định"}`;
+
+      if (
+        errMsg.includes("api_key_invalid") ||
+        errMsg.includes("api key not valid") ||
+        errMsg.includes("invalid api key") ||
+        errMsg.includes("api key expired") ||
+        errCode === 400 && errMsg.includes("key")
+      ) {
+        status = "invalid";
+        userFriendlyMessage = "Khóa API không hợp lệ hoặc đã bị vô hiệu hóa trên Google AI Studio.";
+      } else if (
+        errMsg.includes("resource_exhausted") ||
+        errMsg.includes("quota") ||
+        errMsg.includes("rate limit") ||
+        errCode === 429
+      ) {
+        status = "quota_exceeded";
+        userFriendlyMessage = "Khóa API đã hết hạn mức sử dụng (Quota / Rate Limit) trong ngày hoặc phút này.";
+      } else if (
+        errMsg.includes("permission_denied") ||
+        errMsg.includes("permission") ||
+        errCode === 403
+      ) {
+        status = "permission_denied";
+        userFriendlyMessage = "Quyền truy cập bị từ chối. Vui lòng kiểm tra quyền hạn dự án trên Google Cloud Console.";
+      }
+
+      return {
+        success: false,
+        status,
+        latencyMs,
+        message: userFriendlyMessage,
+        isDefaultKey,
+      };
+    }
+  }
+
+  // AI endpoint: Test a single Gemini API key
+  app.post("/api/ai/test-key", async (req, res) => {
+    try {
+      const { apiKey } = req.body || {};
+      const result = await performKeyTest(apiKey);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        status: "error",
+        latencyMs: 0,
+        message: err.message || "Lỗi máy chủ khi kiểm tra API Key",
+      });
+    }
+  });
+
+  // AI endpoint: Test multiple Gemini API keys in batch
+  app.post("/api/ai/test-keys-batch", async (req, res) => {
+    try {
+      const { apiKeys = [] } = req.body || {};
+      if (!Array.isArray(apiKeys) || apiKeys.length === 0) {
+        return res.json({ success: true, results: [] });
+      }
+
+      // Test up to 15 keys in parallel with Promise.allSettled
+      const testPromises = apiKeys.slice(0, 15).map(async (rawKey: string, index: number) => {
+        const key = (rawKey || "").trim();
+        const masked = key.length > 8 ? `${key.substring(0, 6)}...${key.substring(key.length - 4)}` : key;
+        const testRes = await performKeyTest(key);
+        return {
+          index,
+          key,
+          masked,
+          ...testRes,
+        };
+      });
+
+      const settledResults = await Promise.all(testPromises);
+      res.json({
+        success: true,
+        total: settledResults.length,
+        validCount: settledResults.filter((r) => r.success).length,
+        results: settledResults,
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        error: err.message || "Lỗi kiểm tra danh sách API Keys",
+      });
+    }
   });
 
   // AI endpoint: Refine single student comment
@@ -760,6 +909,9 @@ Thầy Thắng và đội ngũ trợ giảng sẽ tiếp tục bám sát từng 
       } catch (err) {
         console.warn("Could not write to shared_cloud_store.json:", err);
       }
+
+      // Persist to Firebase Firestore if available
+      safeSetFirestoreDoc("cloudSync", "sharedStore", sharedCloudStore).catch(() => {});
 
       // Broadcast live event to all connected devices immediately!
       broadcastCloudUpdate({

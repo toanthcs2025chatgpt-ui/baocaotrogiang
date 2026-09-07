@@ -1,6 +1,8 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
 import {
   getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
   Firestore,
   collection,
   doc,
@@ -12,7 +14,6 @@ import {
   where,
   orderBy,
   onSnapshot,
-  enableIndexedDbPersistence,
   Unsubscribe,
   Timestamp,
 } from "firebase/firestore";
@@ -65,19 +66,19 @@ export function getFirebaseInstance() {
     } else {
       app = getApp();
     }
-    db = getFirestore(app);
-    auth = getAuth(app);
-
-    // Enable Offline Persistence for PWA / Real-time multi-device
-    if (typeof window !== "undefined" && !isPersistenceEnabled) {
-      isPersistenceEnabled = true;
-      enableIndexedDbPersistence(db).catch((err) => {
-        if (err.code === "failed-precondition") {
-          console.warn("Firestore offline persistence: multiple tabs open");
-        } else if (err.code === "unimplemented") {
-          console.warn("Firestore offline persistence: browser does not support IndexedDB");
-        }
-      });
+    
+    if (!db) {
+      try {
+        db = getFirestore(app, "ai-studio-clbtonthythnghth-5703903c-3494-4364-abf2-fadc70800711");
+      } catch (e) {
+        db = initializeFirestore(app, {
+          localCache: persistentLocalCache(),
+        }, "ai-studio-clbtonthythnghth-5703903c-3494-4364-abf2-fadc70800711");
+      }
+    }
+    
+    if (!auth) {
+      auth = getAuth(app);
     }
 
     return { app, db, auth, isConfigured: true };

@@ -47,6 +47,18 @@ export interface AIRefineRequest {
   customPrompt?: string;
 }
 
+export interface ApiKeyTestResult {
+  success: boolean;
+  status: "valid" | "quota_exceeded" | "invalid" | "permission_denied" | "error";
+  latencyMs: number;
+  message: string;
+  sampleResponse?: string;
+  isDefaultKey: boolean;
+  key?: string;
+  masked?: string;
+  index?: number;
+}
+
 export const aiService = {
   // Get currently active API key from settings if set
   getActiveApiKey(): string | undefined {
@@ -60,6 +72,75 @@ export const aiService = {
       return settings.apiKeyList[settings.activeApiKeyIndex]?.trim();
     }
     return undefined;
+  },
+
+  // Test a single API key connection
+  async testApiKey(apiKey?: string): Promise<ApiKeyTestResult> {
+    try {
+      const response = await fetch("/api/ai/test-key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return data;
+      }
+      const err = await response.json().catch(() => ({}));
+      return {
+        success: false,
+        status: "error",
+        latencyMs: 0,
+        message: err.message || `Lỗi HTTP ${response.status}`,
+        isDefaultKey: !apiKey,
+      };
+    } catch (e: any) {
+      return {
+        success: false,
+        status: "error",
+        latencyMs: 0,
+        message: e.message || "Không thể kết nối đến máy chủ",
+        isDefaultKey: !apiKey,
+      };
+    }
+  },
+
+  // Test multiple API keys in batch
+  async testBatchApiKeys(apiKeys: string[]): Promise<{
+    success: boolean;
+    total: number;
+    validCount: number;
+    results: ApiKeyTestResult[];
+  }> {
+    try {
+      const response = await fetch("/api/ai/test-keys-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKeys }),
+      });
+
+      if (response.ok) {
+        return await response.json();
+      }
+      throw new Error(`HTTP ${response.status}`);
+    } catch (e: any) {
+      return {
+        success: false,
+        total: apiKeys.length,
+        validCount: 0,
+        results: apiKeys.map((k, idx) => ({
+          index: idx,
+          key: k,
+          masked: k.length > 8 ? `${k.substring(0, 6)}...${k.substring(k.length - 4)}` : k,
+          success: false,
+          status: "error",
+          latencyMs: 0,
+          message: e.message || "Lỗi kiểm tra",
+          isDefaultKey: false,
+        })),
+      };
+    }
   },
 
   // Single comment generation / refinement

@@ -31,10 +31,15 @@ import {
   Copy,
   HelpCircle,
   Code,
+  Zap,
+  Layers,
+  ArrowRight,
+  Server,
 } from "lucide-react";
 import { ClubSettings, User } from "../types";
 import { storageService } from "../services/storage";
 import { firebaseService } from "../services/firebase";
+import { aiService, ApiKeyTestResult } from "../services/ai";
 import { AvatarUpload } from "./AvatarUpload";
 
 interface SettingsViewProps {
@@ -53,6 +58,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [settings, setSettings] = useState<ClubSettings>(() => storageService.getSettings());
   const [adminUser, setAdminUser] = useState<User>(() => storageService.getAdminUser());
   const [newApiKey, setNewApiKey] = useState("");
+  const [newKeyLabel, setNewKeyLabel] = useState("");
+  const [bulkKeysText, setBulkKeysText] = useState("");
+  const [addKeyMode, setAddKeyMode] = useState<"single" | "bulk">("single");
+  const [visibleKeys, setVisibleKeys] = useState<Record<number, boolean>>({});
+  const [copiedKeyIndex, setCopiedKeyIndex] = useState<number | null>(null);
+
+  const [testingKeyIndex, setTestingKeyIndex] = useState<number | null>(null);
+  const [testingAllKeys, setTestingAllKeys] = useState(false);
+  const [testingServerKey, setTestingServerKey] = useState(false);
+  const [serverKeyResult, setServerKeyResult] = useState<ApiKeyTestResult | null>(null);
+  const [keyTestResults, setKeyTestResults] = useState<Record<number, ApiKeyTestResult>>({});
+
   const [testResult, setTestResult] = useState<{ status: "idle" | "testing" | "success" | "error"; message?: string }>({
     status: "idle",
   });
@@ -263,8 +280,54 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleAddApiKey = () => {
-    if (!newApiKey.trim()) return;
-    const updatedKeys = [...(settings.apiKeyList || []), newApiKey.trim()];
+    const clean = newApiKey.trim();
+    if (!clean) return;
+    const currentList = settings.apiKeyList || [];
+    if (currentList.includes(clean)) {
+      alert("Key này đã có trong danh sách!");
+      return;
+    }
+    const updatedKeys = [...currentList, clean];
+    const updatedMetadata = { ...(settings.apiKeyMetadata || {}) };
+    if (newKeyLabel.trim()) {
+      updatedMetadata[clean] = {
+        label: newKeyLabel.trim(),
+        lastStatus: "untested",
+      };
+    }
+    const newSettings: ClubSettings = {
+      ...settings,
+      apiKeyList: updatedKeys,
+      apiKeyMetadata: updatedMetadata,
+      activeApiKeyIndex: settings.activeApiKeyIndex ?? 0,
+    };
+    setSettings(newSettings);
+    storageService.saveSettings(newSettings);
+    setNewApiKey("");
+    setNewKeyLabel("");
+  };
+
+  const handleAddBulkApiKeys = () => {
+    if (!bulkKeysText.trim()) return;
+    const extracted = bulkKeysText
+      .split(/[\n,;\s]+/)
+      .map((k) => k.trim())
+      .filter((k) => k.length > 10 && k.startsWith("AIzaSy"));
+
+    if (extracted.length === 0) {
+      alert("Không tìm thấy API Key Gemini hợp lệ nào (bắt đầu bằng 'AIzaSy' và có hơn 30 ký tự).");
+      return;
+    }
+
+    const currentList = settings.apiKeyList || [];
+    const uniqueNewKeys = extracted.filter((k) => !currentList.includes(k));
+
+    if (uniqueNewKeys.length === 0) {
+      alert("Tất cả các key vừa nhập đều đã tồn tại trong danh sách!");
+      return;
+    }
+
+    const updatedKeys = [...currentList, ...uniqueNewKeys];
     const newSettings: ClubSettings = {
       ...settings,
       apiKeyList: updatedKeys,
@@ -272,18 +335,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     };
     setSettings(newSettings);
     storageService.saveSettings(newSettings);
-    setNewApiKey("");
+    setBulkKeysText("");
+    setAddKeyMode("single");
   };
 
   const handleDeleteApiKey = (index: number) => {
-    const updatedKeys = settings.apiKeyList.filter((_, i) => i !== index);
+    const keyToRemove = settings.apiKeyList?.[index];
+    const updatedKeys = (settings.apiKeyList || []).filter((_, i) => i !== index);
     let newActive = settings.activeApiKeyIndex;
     if (newActive >= updatedKeys.length) {
       newActive = Math.max(0, updatedKeys.length - 1);
     }
+    const updatedMetadata = { ...(settings.apiKeyMetadata || {}) };
+    if (keyToRemove && updatedMetadata[keyToRemove]) {
+      delete updatedMetadata[keyToRemove];
+    }
     const newSettings: ClubSettings = {
       ...settings,
       apiKeyList: updatedKeys,
+      apiKeyMetadata: updatedMetadata,
       activeApiKeyIndex: newActive,
     };
     setSettings(newSettings);
@@ -299,44 +369,92 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     storageService.saveSettings(newSettings);
   };
 
-  const handleTestGemini = async () => {
-    setTestResult({ status: "testing" });
+  const handleTestSingleKey = async (index: number) => {
+    const key = settings.apiKeyList?.[index];
+    if (!key) return;
+    setTestingKeyIndex(index);
+
     try {
-      const activeKey =
-        settings.apiKeyList && settings.apiKeyList.length > 0
-          ? settings.apiKeyList[settings.activeApiKeyIndex]
-          : undefined;
-
-      const res = await fetch("/api/ai/comment", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          studentName: "Nguyễn Minh Quân",
-          attendance: "present",
-          homework: "excellent",
-          comprehension: "very_good",
-          attitude: "very_active",
-          rawComment: "Kiểm tra kết nối Gemini AI",
-          action: "short",
-          apiKey: activeKey,
-        }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || `HTTP ${res.status}`);
-      }
-
-      const data = await res.json();
-      setTestResult({
-        status: "success",
-        message: `Kết nối thành công! Kết quả mẫu: "${data.comment}"`,
-      });
+      const res = await aiService.testApiKey(key);
+      setKeyTestResults((prev) => ({ ...prev, [index]: res }));
+      const updatedMetadata = { ...(settings.apiKeyMetadata || {}) };
+      updatedMetadata[key] = {
+        ...(updatedMetadata[key] || {}),
+        lastStatus: res.status,
+        lastTested: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
+        latencyMs: res.latencyMs,
+        error: res.message,
+      };
+      const newSettings = { ...settings, apiKeyMetadata: updatedMetadata };
+      setSettings(newSettings);
+      storageService.saveSettings(newSettings);
     } catch (e: any) {
-      setTestResult({
-        status: "error",
-        message: `Lỗi kết nối Gemini: ${e.message}`,
+      setKeyTestResults((prev) => ({
+        ...prev,
+        [index]: {
+          success: false,
+          status: "error",
+          latencyMs: 0,
+          message: e.message || "Lỗi kiểm tra",
+          isDefaultKey: false,
+        },
+      }));
+    } finally {
+      setTestingKeyIndex(null);
+    }
+  };
+
+  const handleTestAllApiKeys = async () => {
+    const list = settings.apiKeyList || [];
+    if (list.length === 0) return;
+    setTestingAllKeys(true);
+
+    try {
+      const batchRes = await aiService.testBatchApiKeys(list);
+      const newResults: Record<number, ApiKeyTestResult> = {};
+      const updatedMetadata = { ...(settings.apiKeyMetadata || {}) };
+
+      batchRes.results.forEach((item, idx) => {
+        newResults[idx] = item;
+        const k = list[idx];
+        if (k) {
+          updatedMetadata[k] = {
+            ...(updatedMetadata[k] || {}),
+            lastStatus: item.status,
+            lastTested: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
+            latencyMs: item.latencyMs,
+            error: item.message,
+          };
+        }
       });
+
+      setKeyTestResults(newResults);
+      const newSettings = { ...settings, apiKeyMetadata: updatedMetadata };
+      setSettings(newSettings);
+      storageService.saveSettings(newSettings);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setTestingAllKeys(false);
+    }
+  };
+
+  const handleTestServerKey = async () => {
+    setTestingServerKey(true);
+    setServerKeyResult(null);
+    try {
+      const res = await aiService.testApiKey(undefined);
+      setServerKeyResult(res);
+    } catch (e: any) {
+      setServerKeyResult({
+        success: false,
+        status: "error",
+        latencyMs: 0,
+        message: e.message || "Lỗi kiểm tra",
+        isDefaultKey: true,
+      });
+    } finally {
+      setTestingServerKey(false);
     }
   };
 
@@ -605,116 +723,334 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       {/* SECTION 1: GEMINI AI API KEYS LIST */}
       <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-[#1A472A] text-[#F4C542] flex items-center justify-center font-bold">
-              <Sparkles className="w-4 h-4" />
+            <div className="w-9 h-9 rounded-xl bg-[#1A472A] text-[#F4C542] flex items-center justify-center font-black text-base shadow-sm">
+              <KeyRound className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-sm text-slate-800">
-                Danh Sách API Key Gemini AI (Tùy chọn)
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-sm text-slate-800">
+                  Cấu Hình & Kiểm Tra Danh Sách Gemini API Keys
+                </h3>
+                <span className="text-[10px] bg-[#1A472A] text-[#F4C542] px-2 py-0.5 rounded-full font-black">
+                  {(settings.apiKeyList || []).length} Keys
+                </span>
+              </div>
               <p className="text-xs text-slate-500">
-                Mặc định hệ thống sử dụng key từ biến môi trường máy chủ. Bạn có thể thêm key dự phòng ở đây.
+                Thêm nhiều key dự phòng, kiểm tra trạng thái hoạt động trực tiếp với Google Gemini AI.
               </p>
             </div>
           </div>
 
-          <button
-            onClick={handleTestGemini}
-            disabled={testResult.status === "testing"}
-            className="px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#1A472A] text-xs font-bold transition-all flex items-center gap-1.5 self-start sm:self-auto"
-          >
-            {testResult.status === "testing" ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Sparkles className="w-3.5 h-3.5 text-[#F4C542]" />
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Test All Keys Button */}
+            {(settings.apiKeyList || []).length > 0 && (
+              <button
+                type="button"
+                onClick={handleTestAllApiKeys}
+                disabled={testingAllKeys || testingKeyIndex !== null}
+                className="px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                {testingAllKeys ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Zap className="w-3.5 h-3.5 text-[#F4C542]" />
+                )}
+                <span>{testingAllKeys ? "Đang kiểm tra tất cả..." : "Kiểm tra tất cả Keys"}</span>
+              </button>
             )}
-            <span>Kiểm tra kết nối AI</span>
-          </button>
+
+            {/* Test Server Default Key */}
+            <button
+              type="button"
+              onClick={handleTestServerKey}
+              disabled={testingServerKey}
+              className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              {testingServerKey ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
+              ) : (
+                <Server className="w-3.5 h-3.5 text-blue-600" />
+              )}
+              <span>Kiểm tra Key máy chủ</span>
+            </button>
+          </div>
         </div>
 
-        {testResult.status !== "idle" && (
+        {/* Server Default Key Result Banner */}
+        {serverKeyResult && (
           <div
-            className={`p-3 rounded-2xl text-xs flex items-start gap-2 ${
-              testResult.status === "success"
-                ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                : testResult.status === "error"
-                ? "bg-rose-50 text-rose-800 border border-rose-200"
-                : "bg-blue-50 text-blue-800 border border-blue-200"
+            className={`p-3 rounded-2xl text-xs flex items-center justify-between gap-2 border ${
+              serverKeyResult.success
+                ? "bg-emerald-50 text-emerald-900 border-emerald-200"
+                : "bg-rose-50 text-rose-900 border-rose-200"
             }`}
           >
-            <span>{testResult.message || "Đang gửi yêu cầu kiểm tra tới Google Gemini..."}</span>
+            <div className="flex items-center gap-2 font-medium">
+              {serverKeyResult.success ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+              )}
+              <span>
+                <strong>Key máy chủ:</strong> {serverKeyResult.message} ({serverKeyResult.latencyMs}ms)
+              </span>
+            </div>
+            <button
+              onClick={() => setServerKeyResult(null)}
+              className="text-slate-400 hover:text-slate-600 text-xs font-bold"
+            >
+              Đóng
+            </button>
           </div>
         )}
 
-        {/* Add new key input */}
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-            <input
-              type="text"
-              value={newApiKey}
-              onChange={(e) => setNewApiKey(e.target.value)}
-              placeholder="Nhập Gemini API Key mới (bắt đầu bằng AIzaSy...)"
-              className="w-full text-xs pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1A472A]/20"
-            />
+        {/* Add Keys Section (Single / Bulk tabs) */}
+        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+          <div className="flex items-center justify-between gap-2 border-b border-slate-200 pb-2.5">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setAddKeyMode("single")}
+                className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+                  addKeyMode === "single"
+                    ? "bg-[#1A472A] text-[#F4C542]"
+                    : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+                }`}
+              >
+                + Thêm 1 Key
+              </button>
+              <button
+                type="button"
+                onClick={() => setAddKeyMode("bulk")}
+                className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1 cursor-pointer ${
+                  addKeyMode === "bulk"
+                    ? "bg-[#1A472A] text-[#F4C542]"
+                    : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Dán hàng loạt (Nhiều Keys)</span>
+              </button>
+            </div>
+
+            <a
+              href="https://aistudio.google.com/app/apikey"
+              target="_blank"
+              rel="noreferrer"
+              className="text-[11px] font-bold text-blue-600 hover:underline flex items-center gap-1"
+            >
+              <span>Lấy Key miễn phí tại Google AI Studio</span>
+              <ArrowRight className="w-3 h-3" />
+            </a>
           </div>
-          <button
-            onClick={handleAddApiKey}
-            className="px-4 py-2.5 rounded-xl bg-[#1A472A] hover:bg-emerald-950 text-[#F4C542] text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Thêm Key</span>
-          </button>
+
+          {addKeyMode === "single" ? (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="sm:col-span-2">
+                <input
+                  type="text"
+                  value={newApiKey}
+                  onChange={(e) => setNewApiKey(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleAddApiKey()}
+                  placeholder="Dán Gemini API Key (bắt đầu bằng AIzaSy...)"
+                  className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-mono focus:outline-none focus:ring-2 focus:ring-[#1A472A]/20"
+                />
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newKeyLabel}
+                  onChange={(e) => setNewKeyLabel(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleAddApiKey()}
+                  placeholder="Ghi chú (VD: Key 1)"
+                  className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-[#1A472A]/20"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddApiKey}
+                  disabled={!newApiKey.trim()}
+                  className="px-4 py-2.5 rounded-xl bg-[#1A472A] hover:bg-emerald-950 disabled:opacity-50 text-[#F4C542] text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Thêm</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <textarea
+                rows={3}
+                value={bulkKeysText}
+                onChange={(e) => setBulkKeysText(e.target.value)}
+                placeholder={`AIzaSyXXXXXX_key_1\nAIzaSyYYYYYY_key_2`}
+                className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-white font-mono focus:outline-none focus:ring-2 focus:ring-[#1A472A]/20"
+              />
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleAddBulkApiKeys}
+                  disabled={!bulkKeysText.trim()}
+                  className="px-4 py-2 rounded-xl bg-[#1A472A] hover:bg-emerald-950 disabled:opacity-50 text-[#F4C542] text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Thêm tất cả các Key này</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Key List */}
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {(!settings.apiKeyList || settings.apiKeyList.length === 0) ? (
-            <div className="text-xs text-slate-400 p-4 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center">
-              Chưa có API key tùy chỉnh nào trong danh sách. Hệ thống đang dùng key mặc định từ Cloud Backend.
+            <div className="text-xs text-slate-400 p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center space-y-1">
+              <p className="font-bold text-slate-600">Chưa có API key tùy chỉnh nào trong danh sách.</p>
+              <p className="text-[11px]">Hệ thống hiện đang dùng key mặc định từ Cloud Server.</p>
             </div>
           ) : (
             settings.apiKeyList.map((key, index) => {
               const isActive = settings.activeApiKeyIndex === index;
-              const masked =
-                key.length > 10 ? `${key.substring(0, 8)}...${key.substring(key.length - 4)}` : key;
+              const isVisible = visibleKeys[index];
+              const testRes = keyTestResults[index];
+              const meta = settings.apiKeyMetadata?.[key];
+              const isTestingThis = testingKeyIndex === index;
+
+              const displayKey = isVisible
+                ? key
+                : key.length > 12
+                ? `${key.substring(0, 8)}••••••••••••${key.substring(key.length - 4)}`
+                : key;
+
+              const currentStatus = testRes?.status || meta?.lastStatus;
 
               return (
                 <div
                   key={index}
-                  className={`p-3 rounded-2xl border flex items-center justify-between gap-3 text-xs transition-all ${
+                  className={`p-3.5 rounded-2xl border transition-all space-y-2 ${
                     isActive
-                      ? "bg-emerald-50/60 border-emerald-300 text-emerald-900 font-semibold"
-                      : "bg-slate-50 border-slate-200 text-slate-700"
+                      ? "bg-emerald-50/50 border-[#1A472A] shadow-xs"
+                      : "bg-slate-50/50 border-slate-200 hover:border-slate-300"
                   }`}
                 >
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleSelectActiveKey(index)}
-                      className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                        isActive ? "border-[#1A472A] bg-[#1A472A]" : "border-slate-300"
-                      }`}
-                    >
-                      {isActive && <div className="w-1.5 h-1.5 rounded-full bg-[#F4C542]" />}
-                    </button>
-                    <span className="font-mono">{masked}</span>
-                    {isActive && (
-                      <span className="text-[10px] bg-[#1A472A] text-[#F4C542] px-2 py-0.5 rounded-full font-bold">
-                        Đang kích hoạt
-                      </span>
-                    )}
+                  <div className="flex items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2.5 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectActiveKey(index)}
+                        className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 cursor-pointer ${
+                          isActive ? "border-[#1A472A] bg-[#1A472A]" : "border-slate-300 bg-white"
+                        }`}
+                        title="Chọn làm key chính ưu tiên sử dụng"
+                      >
+                        {isActive && <div className="w-1.5 h-1.5 rounded-full bg-[#F4C542]" />}
+                      </button>
+
+                      <div className="overflow-hidden">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-900 text-xs">
+                            {meta?.label || `Key #${index + 1}`}
+                          </span>
+                          {isActive && (
+                            <span className="text-[9px] bg-[#1A472A] text-[#F4C542] px-2 py-0.2 rounded-full font-bold">
+                              Đang kích hoạt
+                            </span>
+                          )}
+                        </div>
+                        <span className="font-mono text-slate-600 text-[11px] select-all block truncate">
+                          {displayKey}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {/* Status pill */}
+                      {currentStatus === "valid" ? (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-300 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                          Hoạt động ({testRes?.latencyMs || meta?.latencyMs || 0}ms)
+                        </span>
+                      ) : currentStatus === "quota_exceeded" ? (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                          Hết Quota
+                        </span>
+                      ) : currentStatus === "invalid" ? (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-900 border border-rose-300">
+                          Không hợp lệ
+                        </span>
+                      ) : currentStatus === "error" ? (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-900 border border-rose-300">
+                          Lỗi kết nối
+                        </span>
+                      ) : null}
+
+                      {/* Test connection button */}
+                      <button
+                        type="button"
+                        onClick={() => handleTestSingleKey(index)}
+                        disabled={isTestingThis || testingAllKeys}
+                        className="px-2.5 py-1 rounded-lg bg-white hover:bg-emerald-50 text-slate-700 hover:text-[#1A472A] font-bold text-[11px] border border-slate-200 flex items-center gap-1 cursor-pointer transition-colors"
+                        title="Kiểm tra kết nối key này"
+                      >
+                        {isTestingThis ? (
+                          <Loader2 className="w-3 h-3 animate-spin text-emerald-700" />
+                        ) : (
+                          <Zap className="w-3 h-3 text-amber-500" />
+                        )}
+                        <span>{isTestingThis ? "Đang test..." : "Kiểm tra"}</span>
+                      </button>
+
+                      {/* Visibility toggle */}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setVisibleKeys((prev) => ({ ...prev, [index]: !prev[index] }))
+                        }
+                        className="p-1.5 rounded-lg hover:bg-white text-slate-400 hover:text-slate-700 transition-colors"
+                      >
+                        {isVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+
+                      {/* Copy */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(key);
+                          setCopiedKeyIndex(index);
+                          setTimeout(() => setCopiedKeyIndex(null), 2000);
+                        }}
+                        className="p-1.5 rounded-lg hover:bg-white text-slate-400 hover:text-slate-700 transition-colors"
+                      >
+                        {copiedKeyIndex === index ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+
+                      {/* Delete */}
+                      <button
+                        onClick={() => handleDeleteApiKey(index)}
+                        className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-colors"
+                        title="Xóa Key này"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
 
-                  <button
-                    onClick={() => handleDeleteApiKey(index)}
-                    className="text-slate-400 hover:text-rose-600 p-1 transition-colors"
-                    title="Xóa Key này"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  {testRes && (
+                    <div
+                      className={`p-2 rounded-xl text-[11px] border ${
+                        testRes.success
+                          ? "bg-emerald-50 text-emerald-950 border-emerald-200"
+                          : "bg-rose-50 text-rose-950 border-rose-200"
+                      }`}
+                    >
+                      <span className="font-bold">{testRes.message}</span>
+                    </div>
+                  )}
                 </div>
               );
             })

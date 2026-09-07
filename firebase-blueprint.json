@@ -1,0 +1,24 @@
+{
+  "entities": {
+    "SharedCloudStore": {
+      "title": "Shared Cloud Store",
+      "description": "Monolithic sync state for all data",
+      "type": "object",
+      "properties": {
+        "version": { "type": "number" },
+        "updatedAt": { "type": "string" },
+        "updatedBy": { "type": "string" },
+        "account": { "type": "string" },
+        "totalItems": { "type": "number" },
+        "data": { "type": "object" }
+      },
+      "required": ["version", "updatedAt", "data"]
+    }
+  },
+  "firestore": {
+    "/cloudSync/{syncId}": {
+      "schema": { "$ref": "#/entities/SharedCloudStore" },
+      "description": "Global state for the app"
+    }
+  }
+}

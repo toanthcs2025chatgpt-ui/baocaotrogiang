@@ -371,6 +371,14 @@ export interface ClubSettings {
   address: string;
   apiKeyList: string[];
   activeApiKeyIndex: number;
+  autoRotateApiKeys?: boolean;
+  apiKeyMetadata?: Record<string, {
+    label?: string;
+    lastStatus?: "valid" | "quota_exceeded" | "invalid" | "permission_denied" | "error" | "untested";
+    lastTested?: string;
+    latencyMs?: number;
+    error?: string;
+  }>;
   firebaseConfig?: {
     apiKey: string;
     authDomain: string;
