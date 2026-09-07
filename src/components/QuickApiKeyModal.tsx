@@ -309,6 +309,23 @@ export const QuickApiKeyModal: React.FC<QuickApiKeyModalProps> = ({
     }
   };
 
+  // Reset status of all keys to fresh
+  const handleResetAllStatus = () => {
+    setTestResults({});
+    const updatedMetadata = { ...(settings.apiKeyMetadata || {}) };
+    keyList.forEach((k) => {
+      if (updatedMetadata[k]) {
+        delete updatedMetadata[k].lastStatus;
+        delete updatedMetadata[k].error;
+        delete updatedMetadata[k].latencyMs;
+      }
+    });
+    const updatedSettings = { ...settings, apiKeyMetadata: updatedMetadata };
+    setSettings(updatedSettings);
+    storageService.saveSettings(updatedSettings);
+    onSaved();
+  };
+
   // Test Default Server Key
   const handleTestDefaultKey = async () => {
     setTestingDefault(true);
@@ -493,19 +510,30 @@ export const QuickApiKeyModal: React.FC<QuickApiKeyModalProps> = ({
 
             {/* Test All Keys Button */}
             {keyList.length > 0 && (
-              <button
-                type="button"
-                onClick={handleTestAllKeys}
-                disabled={testingAll || testingIndex !== null}
-                className="px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-black text-xs flex items-center gap-1.5 transition-all shadow-sm shrink-0 cursor-pointer"
-              >
-                {testingAll ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Zap className="w-3.5 h-3.5 text-[#F4C542]" />
-                )}
-                <span>{testingAll ? "Đang kiểm tra tất cả..." : "Kiểm tra tất cả Keys"}</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleResetAllStatus}
+                  className="px-3 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs border border-slate-200 flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+                  title="Đặt lại trạng thái kiểm tra của tất cả các keys"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Đặt lại trạng thái</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleTestAllKeys}
+                  disabled={testingAll || testingIndex !== null}
+                  className="px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-black text-xs flex items-center gap-1.5 transition-all shadow-sm shrink-0 cursor-pointer"
+                >
+                  {testingAll ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Zap className="w-3.5 h-3.5 text-[#F4C542]" />
+                  )}
+                  <span>{testingAll ? "Đang kiểm tra tất cả..." : "Kiểm tra tất cả Keys"}</span>
+                </button>
+              </div>
             )}
           </div>
 
@@ -558,7 +586,7 @@ export const QuickApiKeyModal: React.FC<QuickApiKeyModalProps> = ({
                       value={newKey}
                       onChange={(e) => setNewKey(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && handleAddSingleKey()}
-                      placeholder="Dán Gemini API Key (bắt đầu bằng AIzaSy...)"
+                      placeholder="Dán Gemini API Key (Bắt đầu bằng AQ... hoặc AIzaSy...)"
                       className="w-full p-2.5 rounded-xl border-2 border-slate-200 bg-white font-mono text-xs focus:outline-none focus:border-[#1A472A]"
                     />
                   </div>
@@ -589,13 +617,13 @@ export const QuickApiKeyModal: React.FC<QuickApiKeyModalProps> = ({
             ) : (
               <div className="space-y-2.5">
                 <p className="text-[11px] text-slate-500">
-                  Dán nhiều API Key (mỗi dòng 1 key, hoặc ngăn cách bằng dấu phẩy). Hệ thống sẽ tự lọc các key hợp lệ:
+                  Dán nhiều API Key (mỗi dòng 1 key, hoặc ngăn cách bằng dấu phẩy). Hệ thống tự nhận diện các key định dạng mới <code className="font-mono bg-slate-200 px-1 rounded">AQ...</code> hoặc <code className="font-mono bg-slate-200 px-1 rounded">AIzaSy...</code>:
                 </p>
                 <textarea
                   rows={3}
                   value={bulkKeysText}
                   onChange={(e) => setBulkKeysText(e.target.value)}
-                  placeholder={`AIzaSyXXXXXX_key_1\nAIzaSyYYYYYY_key_2\nAIzaSyZZZZZZ_key_3`}
+                  placeholder={`AQ.Ab8RNXXXXXX_key_1\nAQ.Ab8RNYYYYYY_key_2\nAIzaSyZZZZZZ_key_3`}
                   className="w-full p-2.5 rounded-xl border-2 border-slate-200 bg-white font-mono text-xs focus:outline-none focus:border-[#1A472A]"
                 />
                 <div className="flex justify-end gap-2">
@@ -620,14 +648,25 @@ export const QuickApiKeyModal: React.FC<QuickApiKeyModalProps> = ({
                 <span>Danh Sách API Keys Đang Cấu Hình ({keyList.length}):</span>
               </label>
 
-              {keyList.length > 1 && (
-                <button
-                  type="button"
-                  onClick={handleClearAllKeys}
-                  className="text-[11px] text-rose-600 hover:text-rose-800 font-bold hover:underline cursor-pointer"
-                >
-                  Xóa tất cả
-                </button>
+              {keyList.length > 0 && (
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleResetAllStatus}
+                    className="text-[11px] text-slate-500 hover:text-slate-800 font-bold hover:underline cursor-pointer"
+                  >
+                    Xóa lịch sử lỗi
+                  </button>
+                  {keyList.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={handleClearAllKeys}
+                      className="text-[11px] text-rose-600 hover:text-rose-800 font-bold hover:underline cursor-pointer"
+                    >
+                      Xóa tất cả
+                    </button>
+                  )}
+                </div>
               )}
             </div>
 
@@ -702,6 +741,23 @@ export const QuickApiKeyModal: React.FC<QuickApiKeyModalProps> = ({
                           {renderStatusBadge(testRes, meta?.lastStatus)}
                         </div>
                       </div>
+
+                      {/* Error details box if any */}
+                      {(() => {
+                        const errMessage = testRes?.message || meta?.error;
+                        const currentStatus = testRes?.status || meta?.lastStatus;
+                        const hasError = currentStatus && currentStatus !== "valid";
+                        if (!hasError || !errMessage) return null;
+                        return (
+                          <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-[11px] text-rose-800 flex items-start gap-2">
+                            <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
+                            <div className="space-y-0.5">
+                              <span className="font-bold">Chi tiết phản hồi: </span>
+                              <span>{errMessage}</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       {/* Action buttons on card */}
                       <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-[11px]">

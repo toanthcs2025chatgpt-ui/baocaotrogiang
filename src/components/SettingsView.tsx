@@ -485,6 +485,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
+  const handleResetKeyStatus = () => {
+    setKeyTestResults({});
+    const updatedMetadata = { ...(settings.apiKeyMetadata || {}) };
+    (settings.apiKeyList || []).forEach((k) => {
+      if (updatedMetadata[k]) {
+        delete updatedMetadata[k].lastStatus;
+        delete updatedMetadata[k].error;
+        delete updatedMetadata[k].latencyMs;
+      }
+    });
+    const newSettings = { ...settings, apiKeyMetadata: updatedMetadata };
+    setSettings(newSettings);
+    storageService.saveSettings(newSettings);
+  };
+
   const handleTestServerKey = async () => {
     setTestingServerKey(true);
     setServerKeyResult(null);
@@ -790,21 +805,32 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Test All Keys Button */}
+            {/* Reset status and Test All Keys Button */}
             {(settings.apiKeyList || []).length > 0 && (
-              <button
-                type="button"
-                onClick={handleTestAllApiKeys}
-                disabled={testingAllKeys || testingKeyIndex !== null}
-                className="px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
-              >
-                {testingAllKeys ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Zap className="w-3.5 h-3.5 text-[#F4C542]" />
-                )}
-                <span>{testingAllKeys ? "Đang kiểm tra tất cả..." : "Kiểm tra tất cả Keys"}</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={handleResetKeyStatus}
+                  className="px-3 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all border border-slate-200 flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Đặt lại trạng thái kiểm tra"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Đặt lại trạng thái</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleTestAllApiKeys}
+                  disabled={testingAllKeys || testingKeyIndex !== null}
+                  className="px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  {testingAllKeys ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Zap className="w-3.5 h-3.5 text-[#F4C542]" />
+                  )}
+                  <span>{testingAllKeys ? "Đang kiểm tra tất cả..." : "Kiểm tra tất cả Keys"}</span>
+                </button>
+              </>
             )}
 
             {/* Test Server Default Key */}
@@ -968,7 +994,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   value={newApiKey}
                   onChange={(e) => setNewApiKey(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleAddApiKey()}
-                  placeholder="Dán Gemini API Key (bắt đầu bằng AIzaSy...)"
+                  placeholder="Dán Gemini API Key (Bắt đầu bằng AQ... hoặc AIzaSy...)"
                   className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-mono focus:outline-none focus:ring-2 focus:ring-[#1A472A]/20"
                 />
               </div>
@@ -998,7 +1024,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 rows={3}
                 value={bulkKeysText}
                 onChange={(e) => setBulkKeysText(e.target.value)}
-                placeholder={`AIzaSyXXXXXX_key_1\nAIzaSyYYYYYY_key_2`}
+                placeholder={`AQ.Ab8RNXXXXXX_key_1\nAIzaSyYYYYYY_key_2`}
                 className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-white font-mono focus:outline-none focus:ring-2 focus:ring-[#1A472A]/20"
               />
               <div className="flex justify-end">
@@ -1038,6 +1064,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 : key;
 
               const currentStatus = testRes?.status || meta?.lastStatus;
+              const errMessage = testRes?.message || meta?.error;
 
               return (
                 <div
@@ -1092,6 +1119,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       ) : currentStatus === "invalid" ? (
                         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-900 border border-rose-300">
                           Không hợp lệ
+                        </span>
+                      ) : currentStatus === "permission_denied" ? (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-900 border border-purple-300">
+                          Thiếu quyền
                         </span>
                       ) : currentStatus === "error" ? (
                         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-900 border border-rose-300">
@@ -1154,14 +1185,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     </div>
                   </div>
 
-                  {testRes && (
-                    <div
-                      className={`p-2 rounded-xl text-[11px] border ${
-                        testRes.success
-                          ? "bg-emerald-50 text-emerald-950 border-emerald-200"
-                          : "bg-rose-50 text-rose-950 border-rose-200"
-                      }`}
-                    >
+                  {errMessage && currentStatus !== "valid" && (
+                    <div className="p-2 rounded-xl text-[11px] bg-rose-50 text-rose-900 border border-rose-200 flex items-start gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
+                      <div className="space-y-0.5">
+                        <span className="font-bold">Chi tiết: </span>
+                        <span>{errMessage}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {testRes && testRes.success && (
+                    <div className="p-2 rounded-xl text-[11px] bg-emerald-50 text-emerald-950 border border-emerald-200">
                       <span className="font-bold">{testRes.message}</span>
                     </div>
                   )}

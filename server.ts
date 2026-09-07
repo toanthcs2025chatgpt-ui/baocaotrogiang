@@ -83,16 +83,16 @@ async function startServer() {
 
   // Helper function to map user selection to official Google GenAI model IDs
   function resolveModelName(modelParam?: string): string {
-    if (!modelParam) return "gemini-flash-latest";
+    if (!modelParam) return "gemini-3.8-flash";
     const m = modelParam.trim().toLowerCase();
-    if (m === "3.5" || m === "gemini-3.5" || m === "gemini-3.5-flash" || m.includes("3.5")) {
-      return "gemini-3.5-flash";
+    if (m === "3.8" || m === "gemini-3.8" || m === "gemini-3.8-flash" || m.includes("3.8")) {
+      return "gemini-3.8-flash";
     }
     if (m === "3.7" || m === "gemini-3.7" || m === "gemini-3.7-flash" || m.includes("3.7")) {
       return "gemini-3.7-flash";
     }
-    if (m === "3.8" || m === "gemini-3.8" || m === "gemini-3.8-flash" || m.includes("3.8")) {
-      return "gemini-3.8-flash";
+    if (m === "3.5" || m === "gemini-3.5" || m === "gemini-3.5-flash" || m.includes("3.5")) {
+      return "gemini-3.5-flash";
     }
     if (m === "gemini-flash-latest" || m === "auto" || m === "flash") {
       return "gemini-flash-latest";
@@ -100,32 +100,51 @@ async function startServer() {
     return modelParam;
   }
 
-  // Safe executor for Gemini content generation with fallback
+  // Safe executor for Gemini content generation with multi-model fallback pool
   async function generateGeminiSafe(
     ai: GoogleGenAI,
     preferredModel: string,
     params: { contents: any; config?: any }
   ) {
     const primaryModel = resolveModelName(preferredModel);
-    try {
-      return await ai.models.generateContent({
-        model: primaryModel,
-        contents: params.contents,
-        config: params.config,
-      });
-    } catch (err: any) {
-      const errMsg = (err.message || "").toLowerCase();
-      // If the selected model preview returns 404 or not found, fallback to gemini-flash-latest or gemini-3.8-flash
-      if (err.status === 404 || errMsg.includes("not found")) {
-        console.info(`Model ${primaryModel} 404, falling back to gemini-flash-latest...`);
-        return await ai.models.generateContent({
-          model: "gemini-flash-latest",
+    const candidateModels = [
+      primaryModel,
+      "gemini-3.8-flash",
+      "gemini-3.7-flash",
+      "gemini-3.5-flash",
+      "gemini-flash-latest",
+      "gemini-2.5-flash",
+    ].filter((m, idx, self) => self.indexOf(m) === idx);
+
+    let lastError: any = null;
+    for (const modelName of candidateModels) {
+      try {
+        const res = await ai.models.generateContent({
+          model: modelName,
           contents: params.contents,
           config: params.config,
         });
+        return res;
+      } catch (err: any) {
+        lastError = err;
+        const errMsg = (err.message || "").toLowerCase();
+        // If it's a model not found / 404 / 403 model-specific error, try next candidate
+        if (
+          err.status === 404 ||
+          errMsg.includes("not found") ||
+          errMsg.includes("is not supported") ||
+          errMsg.includes("denied access")
+        ) {
+          console.info(`Model ${modelName} failed (${err.status || errMsg}), trying next candidate...`);
+          continue;
+        }
+        // If it's pure invalid key (400) or quota (429), break and throw
+        if (errMsg.includes("api_key_invalid") || errMsg.includes("invalid api key")) {
+          throw err;
+        }
       }
-      throw err;
     }
+    throw lastError || new Error(`Tất cả các mô hình Gemini (${candidateModels.join(", ")}) đều không phản hồi.`);
   }
 
   // Helper function to test a single Gemini API key with chosen model
@@ -157,28 +176,59 @@ async function startServer() {
     try {
       const ai = new GoogleGenAI({
         apiKey: keyToUse,
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build',
-          },
-        },
       });
 
-      const response = await generateGeminiSafe(ai, modelToUse, {
-        contents: "Xin chào, phản hồi duy nhất 1 chữ: OK",
-      });
+      const candidateModels = [
+        modelToUse,
+        "gemini-3.8-flash",
+        "gemini-3.7-flash",
+        "gemini-3.5-flash",
+        "gemini-flash-latest",
+        "gemini-2.5-flash",
+      ].filter((m, idx, self) => self.indexOf(m) === idx);
+
+      let workingModel = modelToUse;
+      let response: any = null;
+      let lastErr: any = null;
+
+      for (const m of candidateModels) {
+        try {
+          response = await ai.models.generateContent({
+            model: m,
+            contents: "Xin chào, phản hồi duy nhất 1 chữ: OK",
+          });
+          workingModel = m;
+          break;
+        } catch (e: any) {
+          lastErr = e;
+          const eMsg = (e.message || "").toLowerCase();
+          if (
+            e.status === 404 ||
+            e.status === 403 ||
+            eMsg.includes("not found") ||
+            eMsg.includes("denied access")
+          ) {
+            continue;
+          }
+          throw e;
+        }
+      }
+
+      if (!response && lastErr) {
+        throw lastErr;
+      }
 
       const latencyMs = Date.now() - startTime;
-      const text = response.text?.trim() || "OK";
+      const text = response?.text?.trim() || "OK";
 
       return {
         success: true,
         status: "valid",
         latencyMs,
-        message: `Kết nối thành công (${modelToUse})! Phản hồi trong ${latencyMs}ms.`,
+        message: `Kết nối thành công qua ${workingModel}! Phản hồi trong ${latencyMs}ms.`,
         sampleResponse: text,
         isDefaultKey,
-        testedModel: modelToUse,
+        testedModel: workingModel,
       };
     } catch (err: any) {
       const latencyMs = Date.now() - startTime;
@@ -186,7 +236,7 @@ async function startServer() {
       const errCode = err.status || err.code || 0;
 
       let status: "quota_exceeded" | "invalid" | "permission_denied" | "error" = "error";
-      let userFriendlyMessage = `Lỗi kết nối (${modelToUse}): ${err.message || "Không xác định"}`;
+      let userFriendlyMessage = `Lỗi kết nối: ${err.message || "Không thể kết nối máy chủ Google"}`;
 
       if (
         errMsg.includes("api_key_invalid") ||
@@ -196,7 +246,7 @@ async function startServer() {
         (errCode === 400 && errMsg.includes("key"))
       ) {
         status = "invalid";
-        userFriendlyMessage = "Khóa API không hợp lệ hoặc đã bị vô hiệu hóa trên Google AI Studio.";
+        userFriendlyMessage = "Khóa API không hợp lệ hoặc đã bị vô hiệu hóa. Vui lòng kiểm tra lại trên Google AI Studio.";
       } else if (
         errMsg.includes("resource_exhausted") ||
         errMsg.includes("quota") ||
@@ -204,14 +254,15 @@ async function startServer() {
         errCode === 429
       ) {
         status = "quota_exceeded";
-        userFriendlyMessage = "Khóa API đã hết hạn mức sử dụng (Quota / Rate Limit) trong ngày hoặc phút này.";
+        userFriendlyMessage = "Khóa API đã hết hạn mức Quota (Resource Exhausted). Vui lòng thử key khác hoặc đợi reset.";
       } else if (
         errMsg.includes("permission_denied") ||
         errMsg.includes("permission") ||
+        errMsg.includes("denied access") ||
         errCode === 403
       ) {
         status = "permission_denied";
-        userFriendlyMessage = "Quyền truy cập bị từ chối. Vui lòng kiểm tra quyền hạn dự án trên Google Cloud Console.";
+        userFriendlyMessage = "Quyền truy cập bị từ chối (403 Permission Denied) hoặc dự án Google Cloud chưa bật API.";
       }
 
       return {
