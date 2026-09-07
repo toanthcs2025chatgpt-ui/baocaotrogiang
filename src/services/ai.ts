@@ -74,13 +74,20 @@ export const aiService = {
     return undefined;
   },
 
+  // Get currently selected Gemini model
+  getSelectedModel(): string {
+    const settings = storageService.getSettings();
+    return settings.selectedModel || "gemini-flash-latest";
+  },
+
   // Test a single API key connection
-  async testApiKey(apiKey?: string): Promise<ApiKeyTestResult> {
+  async testApiKey(apiKey?: string, model?: string): Promise<ApiKeyTestResult> {
+    const targetModel = model || this.getSelectedModel();
     try {
       const response = await fetch("/api/ai/test-key", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey }),
+        body: JSON.stringify({ apiKey, model: targetModel }),
       });
 
       if (response.ok) {
@@ -107,17 +114,18 @@ export const aiService = {
   },
 
   // Test multiple API keys in batch
-  async testBatchApiKeys(apiKeys: string[]): Promise<{
+  async testBatchApiKeys(apiKeys: string[], model?: string): Promise<{
     success: boolean;
     total: number;
     validCount: number;
     results: ApiKeyTestResult[];
   }> {
+    const targetModel = model || this.getSelectedModel();
     try {
       const response = await fetch("/api/ai/test-keys-batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKeys }),
+        body: JSON.stringify({ apiKeys, model: targetModel }),
       });
 
       if (response.ok) {
@@ -146,12 +154,13 @@ export const aiService = {
   // Single comment generation / refinement
   async refineComment(req: AIRefineRequest): Promise<string> {
     const apiKey = this.getActiveApiKey();
+    const model = this.getSelectedModel();
 
     try {
       const response = await fetch("/api/ai/comment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...req, apiKey }),
+        body: JSON.stringify({ ...req, apiKey, model }),
       });
 
       if (response.ok) {
@@ -179,12 +188,13 @@ export const aiService = {
     parentSummary: string;
   }> {
     const apiKey = this.getActiveApiKey();
+    const model = this.getSelectedModel();
 
     try {
       const response = await fetch("/api/ai/student-analysis", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ student, historyReports, apiKey }),
+        body: JSON.stringify({ student, historyReports, apiKey, model }),
       });
 
       if (response.ok) {
@@ -224,12 +234,13 @@ export const aiService = {
     }>
   ): Promise<Array<{ studentId: string; comment: string }>> {
     const apiKey = this.getActiveApiKey();
+    const model = this.getSelectedModel();
 
     try {
       const response = await fetch("/api/ai/batch-comments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lessonContent, students, apiKey }),
+        body: JSON.stringify({ lessonContent, students, apiKey, model }),
       });
 
       if (response.ok) {
@@ -266,12 +277,13 @@ export const aiService = {
     criteriaStudentMap?: Record<string, string>;
   }): Promise<string> {
     const apiKey = this.getActiveApiKey();
+    const model = this.getSelectedModel();
 
     try {
       const response = await fetch("/api/ai/class-feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...params, apiKey }),
+        body: JSON.stringify({ ...params, apiKey, model }),
       });
 
       if (response.ok) {
@@ -297,12 +309,13 @@ export const aiService = {
   // Weekly & Monthly Academic Bulletin Generator
   async generateAIBulletin(params: GenerateBulletinParams): Promise<AIBulletin> {
     const apiKey = this.getActiveApiKey();
+    const model = this.getSelectedModel();
 
     try {
       const response = await fetch("/api/ai/bulletin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...params, apiKey }),
+        body: JSON.stringify({ ...params, apiKey, model }),
       });
 
       if (response.ok) {
@@ -325,7 +338,7 @@ export const aiService = {
               commonMisconceptions: params.commonMisconceptions,
             },
             createdAt: new Date().toISOString().replace("T", " ").slice(0, 16),
-            generatedBy: apiKey ? "AI Gemini 2.5 Flash" : "Hệ Thống Phân Tích Học Thuật",
+            generatedBy: apiKey ? `AI Gemini (${model})` : "Hệ Thống Phân Tích Học Thuật",
           };
           return newBulletin;
         }

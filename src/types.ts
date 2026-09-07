@@ -372,6 +372,7 @@ export interface ClubSettings {
   apiKeyList: string[];
   activeApiKeyIndex: number;
   autoRotateApiKeys?: boolean;
+  selectedModel?: string; // "gemini-3.8-flash" | "gemini-3.7-flash" | "gemini-3.5-flash" | "gemini-flash-latest"
   apiKeyMetadata?: Record<string, {
     label?: string;
     lastStatus?: "valid" | "quota_exceeded" | "invalid" | "permission_denied" | "error" | "untested";

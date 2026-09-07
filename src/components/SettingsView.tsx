@@ -35,6 +35,7 @@ import {
   Layers,
   ArrowRight,
   Server,
+  Cpu,
 } from "lucide-react";
 import { ClubSettings, User } from "../types";
 import { storageService } from "../services/storage";
@@ -48,6 +49,45 @@ interface SettingsViewProps {
   onWipeData: () => void;
   onUserUpdate?: (user: User) => void;
 }
+
+const AI_MODEL_OPTIONS = [
+  {
+    id: "gemini-3.8-flash",
+    shortName: "3.8",
+    name: "Gemini 3.8 Flash",
+    tag: "Khuyên Dùng / Mới Nhất",
+    description: "Thế hệ 3.8 siêu tốc, nhận xét sắc nét, tinh tế và tối ưu quota.",
+    color: "border-indigo-500 bg-indigo-50/70 text-indigo-900",
+    badgeColor: "bg-indigo-600 text-white",
+  },
+  {
+    id: "gemini-3.7-flash",
+    shortName: "3.7",
+    name: "Gemini 3.7 Flash",
+    tag: "Tư Duy Nâng Cao",
+    description: "Khả năng suy luận & phân tích tiến trình học tập chuyên sâu.",
+    color: "border-emerald-500 bg-emerald-50/70 text-emerald-900",
+    badgeColor: "bg-emerald-600 text-white",
+  },
+  {
+    id: "gemini-3.5-flash",
+    shortName: "3.5",
+    name: "Gemini 3.5 Flash",
+    tag: "Ổn Định Cao",
+    description: "Tốc độ nhanh, ổn định cao cho tác vụ viết nhận xét học vụ.",
+    color: "border-blue-500 bg-blue-50/70 text-blue-900",
+    badgeColor: "bg-blue-600 text-white",
+  },
+  {
+    id: "gemini-flash-latest",
+    shortName: "Auto",
+    name: "Gemini Flash (Tự Động)",
+    tag: "Tự Động Cập Nhật",
+    description: "Tự động kết nối mô hình Flash mới nhất được tối ưu của Google.",
+    color: "border-amber-500 bg-amber-50/70 text-amber-900",
+    badgeColor: "bg-amber-600 text-white",
+  },
+];
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
   currentUser,
@@ -312,10 +352,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const extracted = bulkKeysText
       .split(/[\n,;\s]+/)
       .map((k) => k.trim())
-      .filter((k) => k.length > 10 && k.startsWith("AIzaSy"));
+      .filter((k) => k.length >= 15);
 
     if (extracted.length === 0) {
-      alert("Không tìm thấy API Key Gemini hợp lệ nào (bắt đầu bằng 'AIzaSy' và có hơn 30 ký tự).");
+      alert("Không tìm thấy API Key Gemini hợp lệ nào (mỗi key thường có từ 15 ký tự trở lên).");
       return;
     }
 
@@ -369,13 +409,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     storageService.saveSettings(newSettings);
   };
 
+  const handleSelectModel = (modelId: string) => {
+    const newSettings = { ...settings, selectedModel: modelId };
+    setSettings(newSettings);
+    storageService.saveSettings(newSettings);
+  };
+
   const handleTestSingleKey = async (index: number) => {
     const key = settings.apiKeyList?.[index];
     if (!key) return;
     setTestingKeyIndex(index);
 
     try {
-      const res = await aiService.testApiKey(key);
+      const res = await aiService.testApiKey(key, settings.selectedModel);
       setKeyTestResults((prev) => ({ ...prev, [index]: res }));
       const updatedMetadata = { ...(settings.apiKeyMetadata || {}) };
       updatedMetadata[key] = {
@@ -410,7 +456,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setTestingAllKeys(true);
 
     try {
-      const batchRes = await aiService.testBatchApiKeys(list);
+      const batchRes = await aiService.testBatchApiKeys(list, settings.selectedModel);
       const newResults: Record<number, ApiKeyTestResult> = {};
       const updatedMetadata = { ...(settings.apiKeyMetadata || {}) };
 
@@ -443,7 +489,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setTestingServerKey(true);
     setServerKeyResult(null);
     try {
-      const res = await aiService.testApiKey(undefined);
+      const res = await aiService.testApiKey(undefined, settings.selectedModel);
       setServerKeyResult(res);
     } catch (e: any) {
       setServerKeyResult({
@@ -805,6 +851,74 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </button>
           </div>
         )}
+
+        {/* AI Model Selection Section */}
+        <div className="bg-gradient-to-r from-indigo-50/60 to-purple-50/40 p-4 rounded-2xl border-2 border-indigo-100 shadow-xs space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-indigo-100/70 pb-2.5">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold shrink-0 shadow-xs">
+                <Cpu className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="font-bold text-xs text-slate-900 flex items-center gap-1.5">
+                  <span>Lựa Chọn Mô Hình AI Google Gemini</span>
+                  <span className="text-[10px] font-normal text-indigo-700 bg-indigo-100 px-2 py-0.2 rounded-full font-bold">
+                    3.5 • 3.7 • 3.8
+                  </span>
+                </h4>
+                <p className="text-[11px] text-slate-500">
+                  Lựa chọn linh hoạt phiên bản mô hình AI phù hợp với nhu cầu sinh nhận xét và phân tích tiến độ học tập
+                </p>
+              </div>
+            </div>
+            <span className="text-[10.5px] font-black px-2.5 py-1 rounded-xl bg-indigo-600 text-white shadow-xs self-start sm:self-auto flex items-center gap-1">
+              <Check className="w-3 h-3 text-[#F4C542]" />
+              <span>Đang dùng: {AI_MODEL_OPTIONS.find((m) => m.id === (settings.selectedModel || "gemini-flash-latest"))?.shortName || "3.8"}</span>
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+            {AI_MODEL_OPTIONS.map((opt) => {
+              const isSelected =
+                (settings.selectedModel || "gemini-flash-latest") === opt.id ||
+                settings.selectedModel === opt.shortName ||
+                (!settings.selectedModel && opt.id === "gemini-3.8-flash");
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => handleSelectModel(opt.id)}
+                  className={`p-3 rounded-xl border-2 text-left transition-all relative flex flex-col justify-between cursor-pointer ${
+                    isSelected
+                      ? `${opt.color} shadow-xs ring-2 ring-indigo-400/50 scale-[1.01]`
+                      : "border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-700"
+                  }`}
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="font-black text-xs text-slate-900 flex items-center gap-1">
+                        {opt.name}
+                      </span>
+                      {isSelected ? (
+                        <div className="w-4 h-4 rounded-full bg-indigo-600 text-white flex items-center justify-center shrink-0">
+                          <Check className="w-2.5 h-2.5" />
+                        </div>
+                      ) : (
+                        <div className="w-4 h-4 rounded-full border border-slate-300 bg-slate-100 shrink-0" />
+                      )}
+                    </div>
+                    <span className={`inline-block text-[9px] font-black px-1.5 py-0.5 rounded-md ${opt.badgeColor}`}>
+                      {opt.tag}
+                    </span>
+                    <p className="text-[10.5px] leading-tight text-slate-600 mt-1">
+                      {opt.description}
+                    </p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         {/* Add Keys Section (Single / Bulk tabs) */}
         <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">

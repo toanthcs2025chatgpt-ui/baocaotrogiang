@@ -66,7 +66,14 @@ async function startServer() {
     if (!key) {
       throw new Error("Chưa cấu hình GEMINI_API_KEY trong hệ thống hoặc trong cài đặt.");
     }
-    return new GoogleGenAI({ apiKey: key });
+    return new GoogleGenAI({
+      apiKey: key,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
   }
 
   // Health check
@@ -74,17 +81,66 @@ async function startServer() {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
-  // Helper function to test a single Gemini API key
-  async function performKeyTest(targetKey?: string): Promise<{
+  // Helper function to map user selection to official Google GenAI model IDs
+  function resolveModelName(modelParam?: string): string {
+    if (!modelParam) return "gemini-flash-latest";
+    const m = modelParam.trim().toLowerCase();
+    if (m === "3.5" || m === "gemini-3.5" || m === "gemini-3.5-flash" || m.includes("3.5")) {
+      return "gemini-3.5-flash";
+    }
+    if (m === "3.7" || m === "gemini-3.7" || m === "gemini-3.7-flash" || m.includes("3.7")) {
+      return "gemini-3.7-flash";
+    }
+    if (m === "3.8" || m === "gemini-3.8" || m === "gemini-3.8-flash" || m.includes("3.8")) {
+      return "gemini-3.8-flash";
+    }
+    if (m === "gemini-flash-latest" || m === "auto" || m === "flash") {
+      return "gemini-flash-latest";
+    }
+    return modelParam;
+  }
+
+  // Safe executor for Gemini content generation with fallback
+  async function generateGeminiSafe(
+    ai: GoogleGenAI,
+    preferredModel: string,
+    params: { contents: any; config?: any }
+  ) {
+    const primaryModel = resolveModelName(preferredModel);
+    try {
+      return await ai.models.generateContent({
+        model: primaryModel,
+        contents: params.contents,
+        config: params.config,
+      });
+    } catch (err: any) {
+      const errMsg = (err.message || "").toLowerCase();
+      // If the selected model preview returns 404 or not found, fallback to gemini-flash-latest or gemini-3.8-flash
+      if (err.status === 404 || errMsg.includes("not found")) {
+        console.info(`Model ${primaryModel} 404, falling back to gemini-flash-latest...`);
+        return await ai.models.generateContent({
+          model: "gemini-flash-latest",
+          contents: params.contents,
+          config: params.config,
+        });
+      }
+      throw err;
+    }
+  }
+
+  // Helper function to test a single Gemini API key with chosen model
+  async function performKeyTest(targetKey?: string, modelParam?: string): Promise<{
     success: boolean;
     status: "valid" | "quota_exceeded" | "invalid" | "permission_denied" | "error";
     latencyMs: number;
     message: string;
     sampleResponse?: string;
     isDefaultKey: boolean;
+    testedModel: string;
   }> {
     const isDefaultKey = !targetKey || !targetKey.trim();
     const keyToUse = targetKey?.trim() || process.env.GEMINI_API_KEY;
+    const modelToUse = resolveModelName(modelParam);
 
     if (!keyToUse) {
       return {
@@ -93,14 +149,22 @@ async function startServer() {
         latencyMs: 0,
         message: "Chưa cấu hình API Key (không tìm thấy trong biến môi trường hoặc danh sách).",
         isDefaultKey,
+        testedModel: modelToUse,
       };
     }
 
     const startTime = Date.now();
     try {
-      const ai = new GoogleGenAI({ apiKey: keyToUse });
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+      const ai = new GoogleGenAI({
+        apiKey: keyToUse,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          },
+        },
+      });
+
+      const response = await generateGeminiSafe(ai, modelToUse, {
         contents: "Xin chào, phản hồi duy nhất 1 chữ: OK",
       });
 
@@ -111,9 +175,10 @@ async function startServer() {
         success: true,
         status: "valid",
         latencyMs,
-        message: `Kết nối thành công! Phản hồi trong ${latencyMs}ms.`,
+        message: `Kết nối thành công (${modelToUse})! Phản hồi trong ${latencyMs}ms.`,
         sampleResponse: text,
         isDefaultKey,
+        testedModel: modelToUse,
       };
     } catch (err: any) {
       const latencyMs = Date.now() - startTime;
@@ -121,14 +186,14 @@ async function startServer() {
       const errCode = err.status || err.code || 0;
 
       let status: "quota_exceeded" | "invalid" | "permission_denied" | "error" = "error";
-      let userFriendlyMessage = `Lỗi kết nối: ${err.message || "Không xác định"}`;
+      let userFriendlyMessage = `Lỗi kết nối (${modelToUse}): ${err.message || "Không xác định"}`;
 
       if (
         errMsg.includes("api_key_invalid") ||
         errMsg.includes("api key not valid") ||
         errMsg.includes("invalid api key") ||
         errMsg.includes("api key expired") ||
-        errCode === 400 && errMsg.includes("key")
+        (errCode === 400 && errMsg.includes("key"))
       ) {
         status = "invalid";
         userFriendlyMessage = "Khóa API không hợp lệ hoặc đã bị vô hiệu hóa trên Google AI Studio.";
@@ -155,6 +220,7 @@ async function startServer() {
         latencyMs,
         message: userFriendlyMessage,
         isDefaultKey,
+        testedModel: modelToUse,
       };
     }
   }
@@ -162,8 +228,8 @@ async function startServer() {
   // AI endpoint: Test a single Gemini API key
   app.post("/api/ai/test-key", async (req, res) => {
     try {
-      const { apiKey } = req.body || {};
-      const result = await performKeyTest(apiKey);
+      const { apiKey, model } = req.body || {};
+      const result = await performKeyTest(apiKey, model);
       res.json(result);
     } catch (err: any) {
       res.status(500).json({
@@ -178,7 +244,7 @@ async function startServer() {
   // AI endpoint: Test multiple Gemini API keys in batch
   app.post("/api/ai/test-keys-batch", async (req, res) => {
     try {
-      const { apiKeys = [] } = req.body || {};
+      const { apiKeys = [], model } = req.body || {};
       if (!Array.isArray(apiKeys) || apiKeys.length === 0) {
         return res.json({ success: true, results: [] });
       }
@@ -187,7 +253,7 @@ async function startServer() {
       const testPromises = apiKeys.slice(0, 15).map(async (rawKey: string, index: number) => {
         const key = (rawKey || "").trim();
         const masked = key.length > 8 ? `${key.substring(0, 6)}...${key.substring(key.length - 4)}` : key;
-        const testRes = await performKeyTest(key);
+        const testRes = await performKeyTest(key, model);
         return {
           index,
           key,
@@ -224,6 +290,7 @@ async function startServer() {
         action, // 'rewrite' | 'short' | 'positive' | 'teacher_style' | 'improvement' | 'custom'
         customPrompt,
         apiKey,
+        model,
       } = req.body;
 
       const ai = getGeminiClient(apiKey);
@@ -282,8 +349,7 @@ Quy tắc bắt buộc:
 
 Yêu cầu chỉnh sửa: ${actionPromptMap[action] || actionPromptMap.rewrite}`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+      const response = await generateGeminiSafe(ai, model, {
         contents: `${systemPrompt}\n\n${userMessage}`,
       });
 
@@ -301,7 +367,7 @@ Yêu cầu chỉnh sửa: ${actionPromptMap[action] || actionPromptMap.rewrite}`
   // AI endpoint: Comprehensive student learning analysis based on history
   app.post("/api/ai/student-analysis", async (req, res) => {
     try {
-      const { student, historyReports, apiKey } = req.body;
+      const { student, historyReports, apiKey, model } = req.body;
 
       if (!student || !historyReports || historyReports.length === 0) {
         return res.status(400).json({
@@ -349,8 +415,7 @@ QUY TẮC PHÂN TÍCH:
 
 Chỉ trả về chuỗi JSON hợp lệ, không có markdown codeblock hay text thừa.`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+      const response = await generateGeminiSafe(ai, model, {
         contents: prompt,
         config: {
           responseMimeType: "application/json",
@@ -380,7 +445,7 @@ Chỉ trả về chuỗi JSON hợp lệ, không có markdown codeblock hay text
   // AI endpoint: Batch generate draft comments for a whole class
   app.post("/api/ai/batch-comments", async (req, res) => {
     try {
-      const { lessonContent, students, apiKey } = req.body;
+      const { lessonContent, students, apiKey, model } = req.body;
       const ai = getGeminiClient(apiKey);
 
       const prompt = `Bạn là trợ lý AI CLB TOÁN THẦY THẮNG.
@@ -398,8 +463,7 @@ Trả về JSON array các object với format:
 ]
 Chỉ trả về JSON hợp lệ.`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+      const response = await generateGeminiSafe(ai, model, {
         contents: prompt,
         config: {
           responseMimeType: "application/json",
@@ -442,6 +506,7 @@ Chỉ trả về JSON hợp lệ.`;
         misconceptionTags,
         mode = "concise", // 'concise' | 'detailed'
         apiKey,
+        model,
       } = req.body;
 
       const ai = getGeminiClient(apiKey);
@@ -559,8 +624,7 @@ QUY TẮC:
       let text = "";
       try {
         const ai = getGeminiClient(apiKey);
-        const response = await ai.models.generateContent({
-          model: "gemini-2.5-flash",
+        const response = await generateGeminiSafe(ai, model, {
           contents: prompt,
         });
         text = response.text?.trim() || "";
@@ -615,6 +679,7 @@ Kính mong Quý Phụ huynh phối hợp đôn đốc các con tự giác làm b
         praiseStudents = [],
         commonMisconceptions = [],
         apiKey,
+        model,
       } = req.body;
 
       const isSpecificClass = className && className !== "Toàn bộ các lớp";
@@ -705,8 +770,7 @@ YÊU CẦU BẮT BUỘC KHI VIẾT BẢN TIN:
 
 Hãy trả về toàn văn bản tin hoàn chỉnh bằng tiếng Việt, định dạng Markdown đẹp mắt, sẵn sàng để sao chép và gửi trực tiếp cho Phụ huynh.`;
 
-        const response = await ai.models.generateContent({
-          model: "gemini-2.5-flash",
+        const response = await generateGeminiSafe(ai, model, {
           contents: prompt,
         });
 
