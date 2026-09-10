@@ -32,6 +32,9 @@ const StatisticsView = React.lazy(() =>
 const SettingsView = React.lazy(() =>
   import("./components/SettingsView").then((m) => ({ default: m.SettingsView }))
 );
+const LocalRepoView = React.lazy(() =>
+  import("./components/LocalRepoView").then((m) => ({ default: m.LocalRepoView }))
+);
 const ScheduleView = React.lazy(() =>
   import("./components/ScheduleView").then((m) => ({ default: m.ScheduleView }))
 );
@@ -399,6 +402,13 @@ export function App() {
                   onResetDemo={handleResetDemo}
                   onWipeData={handleWipeData}
                   onUserUpdate={handleUserChange}
+                />
+              )}
+
+              {isAdmin && activeTab === "local_repo" && (
+                <LocalRepoView
+                  currentUser={currentUser}
+                  onWipeData={handleWipeData}
                 />
               )}
             </Suspense>

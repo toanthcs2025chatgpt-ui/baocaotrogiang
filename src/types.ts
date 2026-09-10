@@ -9,7 +9,8 @@ export type TabType =
   | "classes"
   | "assistants"
   | "statistics"
-  | "settings";
+  | "settings"
+  | "local_repo";
 
 export type ShiftPeriod = "morning" | "afternoon" | "evening";
 

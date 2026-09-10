@@ -13,12 +13,13 @@ import {
   Check,
   Sparkles,
   CheckSquare,
+  CheckCircle,
+  X,
   Key,
   Landmark,
   SunMedium,
   MessageCircleHeart,
   Coffee,
-  X,
   Plus,
   Tag,
   UserCheck,
@@ -358,7 +359,49 @@ export const CreateReportView: React.FC<CreateReportViewProps> = ({
     type: "success" | "error" | "info";
     message: string;
   } | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [lastAutosave, setLastAutosave] = useState<string | null>(null);
+
+  // Restore draft on mount
+  useEffect(() => {
+    if (editingReport) return;
+    
+    const draft = storageService.getReportDraft();
+    if (draft && draft.classId && (draft.lessonContent || draft.generalFeedback || (draft.students && draft.students.length > 0))) {
+      const draftTime = draft.updatedAt || "vừa xong";
+      const confirmRestore = window.confirm(
+        `📌 PHÁT HIỆN BẢN NHÁP CHƯA LƯU\n\n` +
+        `Hệ thống tìm thấy một bản nháp báo cáo lớp "${draft.className || 'chưa rõ'}" lưu lúc ${draftTime}.\n\n` +
+        `Thầy có muốn khôi phục lại nội dung này để tiếp tục làm việc không?`
+      );
+      
+      if (confirmRestore) {
+        if (draft.date) setDate(draft.date);
+        if (draft.shift) setShift(draft.shift);
+        if (draft.classId) setClassId(draft.classId);
+        if (draft.assistantId) setSelectedAssistantIds([draft.assistantId]);
+        if (draft.teacherName) setTeacherName(draft.teacherName);
+        if (draft.lessonContent) setLessonContent(draft.lessonContent);
+        if (draft.homeworkAssigned) setHomeworkAssigned(draft.homeworkAssigned);
+        if (draft.generalFeedback) setGeneralFeedback(draft.generalFeedback);
+        if (draft.selectedCriteria) setSelectedCriteria(draft.selectedCriteria);
+        if (draft.selectedPersona) setSelectedPersona(draft.selectedPersona);
+        if (draft.criteriaStudentMap) setCriteriaStudentMap(draft.criteriaStudentMap);
+        if (draft.misconceptionNotes) setMisconceptionNotes(draft.misconceptionNotes);
+        if (draft.misconceptionStudents) setMisconceptionStudents(draft.misconceptionStudents);
+        if (draft.misconceptionTags) setMisconceptionTags(draft.misconceptionTags);
+        if (draft.students) setStudentRows(draft.students);
+        
+        setFeedbackToast({
+          type: "success",
+          message: "Đã khôi phục bản nháp thành công!",
+        });
+      } else {
+        // If user rejects, we don't clear it immediately to be safe, 
+        // but the next autosave will overwrite it anyway.
+      }
+    }
+  }, []);
 
   // Update students when class changes (safely preserves user-entered data)
   useEffect(() => {
@@ -368,30 +411,19 @@ export const CreateReportView: React.FC<CreateReportViewProps> = ({
     }
 
     const filtered = allStudents.filter((s) => s.classId === classId);
+    
     setStudentRows((prevRows) => {
-      // If user has already entered data for this class, preserve all modified fields
-      if (prevRows.length > 0 && prevRows.some((r) => filtered.some((s) => s.id === r.studentId))) {
-        return filtered.map((s) => {
-          const existing = prevRows.find((r) => r.studentId === s.id);
-          if (existing) {
-            return { ...existing, studentName: s.name, avatar: s.avatar || existing.avatar };
-          }
-          return {
-            studentId: s.id,
-            studentName: s.name,
-            attendance: "present",
-            homework: "completed",
-            comprehension: "good",
-            attitude: "active",
-            comment: "",
-            homeworkScore: 9,
-            quickTags: ["Đi học đầy đủ"],
-            bonusPoints: 0,
-            avatar: s.avatar,
-          };
-        });
+      // Logic to preserve data when switching back and forth between classes
+      // We check if the current studentRows belong to a DIFFERENT class
+      const currentClassOfRows = prevRows.length > 0 ? allStudents.find(s => s.id === prevRows[0].studentId)?.classId : null;
+      
+      if (currentClassOfRows && currentClassOfRows !== classId) {
+        // User is switching class. If they have entered data, we should ideally cache it.
+        // For now, we'll just let the autosave handle the "latest" class.
+        // But we allow restoring if they switch back to a class that matches the current studentRows (this case shouldn't happen here due to the dep array).
       }
 
+      // Default behavior: load initial students for the new class
       return filtered.map((s) => ({
         studentId: s.id,
         studentName: s.name,
@@ -879,6 +911,12 @@ export const CreateReportView: React.FC<CreateReportViewProps> = ({
     );
   };
 
+  const handleStudentCommentChange = (studentId: string, value: string) => {
+    setStudentRows((prev) =>
+      prev.map((s) => (s.studentId === studentId ? { ...s, comment: value } : s))
+    );
+  };
+
   const handleToggleStudentQuickTag = (studentId: string, tagLabel: string) => {
     setStudentRows((prev) =>
       prev.map((s) => {
@@ -892,9 +930,23 @@ export const CreateReportView: React.FC<CreateReportViewProps> = ({
     );
   };
 
-  const handleStudentCommentChange = (studentId: string, text: string) => {
+  const handleHomeworkScoreChange = (studentId: string, score: string) => {
+    const numScore = score === "" ? null : parseFloat(score);
     setStudentRows((prev) =>
-      prev.map((s) => (s.studentId === studentId ? { ...s, comment: text } : s))
+      prev.map((s) => (s.studentId === studentId ? { ...s, homeworkScore: numScore } : s))
+    );
+  };
+
+  const handleTestScoreChange = (studentId: string, score: string) => {
+    const numScore = score === "" ? null : parseFloat(score);
+    setStudentRows((prev) =>
+      prev.map((s) => (s.studentId === studentId ? { ...s, testScore: numScore } : s))
+    );
+  };
+
+  const handleHomeworkStatusChange = (studentId: string, status: HomeworkStatus) => {
+    setStudentRows((prev) =>
+      prev.map((s) => (s.studentId === studentId ? { ...s, homework: status } : s))
     );
   };
 
@@ -1251,6 +1303,8 @@ export const CreateReportView: React.FC<CreateReportViewProps> = ({
   };
 
   const handleSaveReport = async (targetStatus: "draft" | "submitted" | "approved") => {
+    if (isSaving) return;
+
     if (!lessonContent.trim()) {
       setFeedbackToast({
         type: "error",
@@ -1258,6 +1312,14 @@ export const CreateReportView: React.FC<CreateReportViewProps> = ({
       });
       return;
     }
+
+    if (!homeworkAssigned.trim()) {
+      const confirmNoHw = window.confirm(
+        "⚠️ Bạn chưa nhập Bài tập về nhà giao cho học sinh. Bạn có chắc chắn muốn tiếp tục không?"
+      );
+      if (!confirmNoHw) return;
+    }
+
     if (!generalFeedback.trim()) {
       setFeedbackToast({
         type: "error",
@@ -1266,91 +1328,113 @@ export const CreateReportView: React.FC<CreateReportViewProps> = ({
       return;
     }
 
-    const currentClass = classes.find((c) => c.id === classId);
-    const currentAssistant = assistants.find((a) => a.id === assistantId);
-    const nowStr = new Date().toISOString().replace("T", " ").slice(0, 16);
-
-    // Kiểm tra trùng lặp báo cáo (Cùng ngày, ca, lớp)
-    const existingDuplicate = await assistantReportService.checkDuplicateReport(
-      date,
-      shift,
-      classId,
-      editingReport?.id
-    );
-
-    if (existingDuplicate && !editingReport) {
-      const confirmOverwrite = window.confirm(
-        `⚠️ Cảnh báo trùng lặp báo cáo:\nĐã có báo cáo cho lớp "${currentClass?.name}" vào ${date} (${shift}) tạo bởi ${existingDuplicate.assistantName}.\n\nBạn có muốn tiếp tục lưu và ghi đè báo cáo này không?`
-      );
-      if (!confirmOverwrite) {
+    // Validate scores
+    for (const st of studentRows) {
+      if (st.homeworkScore !== null && (st.homeworkScore < 0 || st.homeworkScore > 10)) {
+        setFeedbackToast({
+          type: "error",
+          message: `Điểm BTVN của học sinh ${st.studentName} không hợp lệ (0-10)!`,
+        });
         return;
       }
     }
 
-    const presentCount = studentRows.filter((s) => s.attendance === "present").length;
-    const lateCount = studentRows.filter((s) => s.attendance === "late").length;
-    const excusedCount = studentRows.filter((s) => s.attendance === "excused").length;
-    const unexcusedCount = studentRows.filter((s) => s.attendance === "unexcused").length;
+    setIsSaving(true);
+    try {
+      const currentClass = classes.find((c) => c.id === classId);
+      const nowStr = new Date().toISOString().replace("T", " ").slice(0, 16);
 
-    const newReport: Report = {
-      id: editingReport?.id || `rep_${Date.now()}`,
-      date,
-      shift,
-      classId,
-      className: currentClass?.name || "Lớp học",
-      assistantId: selectedAssistantIds[0] || assistantId,
-      assistantName: combinedAssistantName,
-      assistantIds: selectedAssistantIds,
-      assistantNames: selectedAssistantNames,
-      teacherName: teacherName.trim(),
-      lessonContent: lessonContent.trim(),
-      homeworkAssigned: homeworkAssigned.trim(),
+      // Kiểm tra trùng lặp báo cáo (Cùng ngày, ca, lớp)
+      const existingDuplicate = await assistantReportService.checkDuplicateReport(
+        date,
+        shift,
+        classId,
+        editingReport?.id
+      );
 
-      // Whole-class feedback
-      generalFeedback: generalFeedback.trim(),
-      selectedCriteria,
-      selectedPersona,
-      criteriaStudentMap,
+      if (existingDuplicate && !editingReport) {
+        const confirmOverwrite = window.confirm(
+          `⚠️ Cảnh báo trùng lặp báo cáo:\nĐã có báo cáo cho lớp "${currentClass?.name}" vào ${date} (${shift}) tạo bởi ${existingDuplicate.assistantName}.\n\nBạn có muốn tiếp tục lưu và ghi đè báo cáo này không?`
+        );
+        if (!confirmOverwrite) {
+          setIsSaving(false);
+          return;
+        }
+      }
 
-      // Misconceptions
-      misconceptionNotes: misconceptionNotes.trim(),
-      misconceptionStudents,
-      misconceptionTags,
-      misconceptionStudentMap,
-      customMisconceptionTags: customMisconceptions,
+      const presentCount = studentRows.filter((s) => s.attendance === "present").length;
+      const lateCount = studentRows.filter((s) => s.attendance === "late").length;
+      const excusedCount = studentRows.filter((s) => s.attendance === "excused").length;
+      const unexcusedCount = studentRows.filter((s) => s.attendance === "unexcused").length;
 
-      attendanceStats: {
-        total: studentRows.length,
-        present: presentCount,
-        late: lateCount,
-        excused: excusedCount,
-        unexcused: unexcusedCount,
-      },
+      const newReport: Report = {
+        id: editingReport?.id || `rep_${Date.now()}`,
+        date,
+        shift,
+        classId,
+        className: currentClass?.name || "Lớp học",
+        assistantId: selectedAssistantIds[0] || assistantId,
+        assistantName: combinedAssistantName,
+        assistantIds: selectedAssistantIds,
+        assistantNames: selectedAssistantNames,
+        teacherName: teacherName.trim(),
+        lessonContent: lessonContent.trim(),
+        homeworkAssigned: homeworkAssigned.trim(),
 
-      students: studentRows,
-      status: targetStatus,
-      approvedBy: targetStatus === "approved" ? currentUser.name : editingReport?.approvedBy,
-      approvedAt: targetStatus === "approved" ? nowStr : editingReport?.approvedAt,
-      createdAt: editingReport?.createdAt || nowStr,
-      updatedAt: nowStr,
-    };
+        // Whole-class feedback
+        generalFeedback: generalFeedback.trim(),
+        selectedCriteria,
+        selectedPersona,
+        criteriaStudentMap,
 
-    // Save to Firestore Realtime ecosystem and local cache
-    await assistantReportService.saveAssistantReport(newReport);
-    storageService.clearReportDraft();
+        // Misconceptions
+        misconceptionNotes: misconceptionNotes.trim(),
+        misconceptionStudents,
+        misconceptionTags,
+        misconceptionStudentMap,
+        customMisconceptionTags: customMisconceptions,
 
-    setFeedbackToast({
-      type: "success",
-      message:
-        targetStatus === "approved"
-          ? "🎉 Đã duyệt và đồng bộ báo cáo buổi học lên Firebase thành công!"
-          : targetStatus === "submitted"
-          ? "📤 Đã gửi báo cáo realtime cho Giáo viên duyệt thành công!"
-          : "💾 Đã lưu bản nháp báo cáo lên hệ thống thành công!",
-    });
+        attendanceStats: {
+          total: studentRows.length,
+          present: presentCount,
+          late: lateCount,
+          excused: excusedCount,
+          unexcused: unexcusedCount,
+        },
 
-    if (onReportSaved) {
-      onReportSaved(newReport);
+        students: studentRows,
+        status: targetStatus,
+        approvedBy: targetStatus === "approved" ? currentUser.name : editingReport?.approvedBy,
+        approvedAt: targetStatus === "approved" ? nowStr : editingReport?.approvedAt,
+        createdAt: editingReport?.createdAt || nowStr,
+        updatedAt: nowStr,
+      };
+
+      // Save to Firestore Realtime ecosystem and local cache
+      await assistantReportService.saveAssistantReport(newReport);
+      storageService.clearReportDraft();
+
+      setFeedbackToast({
+        type: "success",
+        message:
+          targetStatus === "approved"
+            ? "🎉 Đã duyệt và đồng bộ báo cáo buổi học lên Firebase thành công!"
+            : targetStatus === "submitted"
+            ? "📤 Đã gửi báo cáo realtime cho Giáo viên duyệt thành công!"
+            : "💾 Đã lưu bản nháp báo cáo lên hệ thống thành công!",
+      });
+
+      if (onReportSaved) {
+        onReportSaved(newReport);
+      }
+    } catch (err) {
+      console.error("Save report error:", err);
+      setFeedbackToast({
+        type: "error",
+        message: "Có lỗi xảy ra khi lưu báo cáo. Vui lòng thử lại!",
+      });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -1926,7 +2010,7 @@ export const CreateReportView: React.FC<CreateReportViewProps> = ({
                     </div>
 
                     {/* Middle: Current Status Badge (on tablet/desktop) */}
-                    <div className="hidden sm:flex justify-center sm:w-2/12">
+                    <div className="hidden sm:flex flex-col items-center justify-center sm:w-2/12 gap-1">
                       <span
                         className={`inline-flex items-center gap-1.5 text-xs font-black uppercase px-3 py-1 rounded-xl shadow-2xs ${
                           isPresent
@@ -1959,62 +2043,148 @@ export const CreateReportView: React.FC<CreateReportViewProps> = ({
                             : "Đi muộn"}
                         </span>
                       </span>
+
+                      {/* Display Quick Stats if present */}
+                      {isPresent && (
+                        <div className="flex gap-1">
+                          {st.homeworkScore !== null && (
+                            <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 rounded border border-blue-200">
+                              BTVN: {st.homeworkScore}
+                            </span>
+                          )}
+                          {(st.bonusPoints || 0) > 0 && (
+                            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 rounded border border-amber-200">
+                              +{st.bonusPoints}⭐
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
 
-                    {/* Right: 4 Horizontal Roll Call Quick Buttons */}
-                    <div className="grid grid-cols-4 gap-1 sm:gap-1.5 sm:w-5/12 sm:justify-end">
-                      <button
-                        type="button"
-                        onClick={() => handleAttendanceChange(st.studentId, "present")}
-                        className={`py-1.5 px-1 sm:px-3 sm:py-2 rounded-xl text-[11px] sm:text-xs font-black transition-all cursor-pointer text-center flex items-center justify-center gap-1 whitespace-nowrap min-w-0 ${
-                          isPresent
-                            ? "bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-600/30 scale-102"
-                            : "bg-slate-100 text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 border border-slate-200"
-                        }`}
-                        title="Đánh dấu Có mặt"
-                      >
-                        <Check className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
-                        <span className="truncate">Có mặt</span>
-                      </button>
+                    {/* Right: 4 Horizontal Roll Call Quick Buttons + Details */}
+                    <div className="flex flex-col gap-2 sm:w-5/12 sm:justify-end">
+                      {/* Status toggle buttons row */}
+                      <div className="grid grid-cols-4 gap-1 sm:gap-1.5 w-full">
+                        <button
+                          type="button"
+                          onClick={() => handleAttendanceChange(st.studentId, "present")}
+                          className={`py-1.5 px-1 sm:px-3 sm:py-2 rounded-xl text-[11px] sm:text-xs font-black transition-all cursor-pointer text-center flex items-center justify-center gap-1 whitespace-nowrap min-w-0 ${
+                            isPresent
+                              ? "bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-600/30 scale-102"
+                              : "bg-slate-100 text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 border border-slate-200"
+                          }`}
+                          title="Đánh dấu Có mặt"
+                        >
+                          <Check className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
+                          <span className="truncate">Có mặt</span>
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={() => handleAttendanceChange(st.studentId, "excused")}
-                        className={`py-1.5 px-1 sm:px-3 sm:py-2 rounded-xl text-[11px] sm:text-xs font-black transition-all cursor-pointer text-center flex items-center justify-center gap-1 whitespace-nowrap min-w-0 ${
-                          isExcused
-                            ? "bg-amber-500 text-white shadow-xs ring-2 ring-amber-500/30 scale-102"
-                            : "bg-slate-100 text-slate-700 hover:bg-amber-50 hover:text-amber-800 border border-slate-200"
-                        }`}
-                        title="Đánh dấu Nghỉ có phép"
-                      >
-                        <span className="truncate">Nghỉ phép</span>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAttendanceChange(st.studentId, "excused")}
+                          className={`py-1.5 px-1 sm:px-3 sm:py-2 rounded-xl text-[11px] sm:text-xs font-black transition-all cursor-pointer text-center flex items-center justify-center gap-1 whitespace-nowrap min-w-0 ${
+                            isExcused
+                              ? "bg-amber-500 text-white shadow-xs ring-2 ring-amber-500/30 scale-102"
+                              : "bg-slate-100 text-slate-700 hover:bg-amber-50 hover:text-amber-800 border border-slate-200"
+                          }`}
+                          title="Đánh dấu Nghỉ có phép"
+                        >
+                          <span className="truncate">Nghỉ phép</span>
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={() => handleAttendanceChange(st.studentId, "unexcused")}
-                        className={`py-1.5 px-1 sm:px-3 sm:py-2 rounded-xl text-[11px] sm:text-xs font-black transition-all cursor-pointer text-center flex items-center justify-center gap-1 whitespace-nowrap min-w-0 ${
-                          isUnexcused
-                            ? "bg-rose-600 text-white shadow-xs ring-2 ring-rose-600/30 scale-102"
-                            : "bg-slate-100 text-slate-700 hover:bg-rose-50 hover:text-rose-800 border border-slate-200"
-                        }`}
-                        title="Đánh dấu Nghỉ không phép"
-                      >
-                        <span className="truncate">K.phép</span>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAttendanceChange(st.studentId, "unexcused")}
+                          className={`py-1.5 px-1 sm:px-3 sm:py-2 rounded-xl text-[11px] sm:text-xs font-black transition-all cursor-pointer text-center flex items-center justify-center gap-1 whitespace-nowrap min-w-0 ${
+                            isUnexcused
+                              ? "bg-rose-600 text-white shadow-xs ring-2 ring-rose-600/30 scale-102"
+                              : "bg-slate-100 text-slate-700 hover:bg-rose-50 hover:text-rose-800 border border-slate-200"
+                          }`}
+                          title="Đánh dấu Nghỉ không phép"
+                        >
+                          <span className="truncate">K.phép</span>
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={() => handleAttendanceChange(st.studentId, "late")}
-                        className={`py-1.5 px-1 sm:px-3 sm:py-2 rounded-xl text-[11px] sm:text-xs font-black transition-all cursor-pointer text-center flex items-center justify-center gap-1 whitespace-nowrap min-w-0 ${
-                          isLate
-                            ? "bg-orange-500 text-white shadow-xs ring-2 ring-orange-500/30 scale-102"
-                            : "bg-slate-100 text-slate-700 hover:bg-orange-50 hover:text-orange-800 border border-slate-200"
-                        }`}
-                        title="Đánh dấu Đi muộn"
-                      >
-                        <span className="truncate">Muộn</span>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAttendanceChange(st.studentId, "late")}
+                          className={`py-1.5 px-1 sm:px-3 sm:py-2 rounded-xl text-[11px] sm:text-xs font-black transition-all cursor-pointer text-center flex items-center justify-center gap-1 whitespace-nowrap min-w-0 ${
+                            isLate
+                              ? "bg-orange-500 text-white shadow-xs ring-2 ring-orange-500/30 scale-102"
+                              : "bg-slate-100 text-slate-700 hover:bg-orange-50 hover:text-orange-800 border border-slate-200"
+                          }`}
+                          title="Đánh dấu Đi muộn"
+                        >
+                          <span className="truncate">Muộn</span>
+                        </button>
+                      </div>
+
+                      {/* Detailed Inputs (Homework Score, Bonus Point, Individual Comment) */}
+                      {isPresent && (
+                        <div className="flex flex-col gap-2 pt-2 border-t border-slate-100 animate-in fade-in slide-in-from-top-2 duration-200">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 flex items-center gap-2 bg-blue-50/50 p-1.5 rounded-xl border border-blue-100">
+                              <label className="text-[10px] font-black text-blue-900 uppercase shrink-0">
+                                Điểm BTVN:
+                              </label>
+                              <input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                max="10"
+                                value={st.homeworkScore === null ? "" : st.homeworkScore}
+                                onChange={(e) => handleHomeworkScoreChange(st.studentId, e.target.value)}
+                                placeholder="0-10"
+                                className="w-12 h-7 bg-white border border-blue-300 rounded-lg text-center text-xs font-bold text-blue-950 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                              />
+                              <div className="h-4 w-[1px] bg-blue-200" />
+                              <button
+                                type="button"
+                                onClick={() => handleAddBonusPoint(st.studentId)}
+                                className="flex-1 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-950 text-[10px] font-black flex items-center justify-center gap-1 transition-colors border border-amber-200 shadow-2xs"
+                              >
+                                <Sparkles className="w-3 h-3 text-amber-600" />
+                                <span>+1⭐</span>
+                                <span className="ml-1 bg-amber-600 text-white px-1 rounded-sm">
+                                  {st.bonusPoints || 0}
+                                </span>
+                              </button>
+                            </div>
+                            
+                            <button
+                              type="button"
+                              onClick={() => handleCopyStudentRemark(st)}
+                              className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 shadow-2xs transition-all"
+                              title="Sao chép nhận xét riêng HS này"
+                            >
+                              {copiedStudentId === st.studentId ? (
+                                <Check className="w-4 h-4 text-emerald-600" />
+                              ) : (
+                                <Copy className="w-4 h-4" />
+                              )}
+                            </button>
+                          </div>
+                          
+                          <div className="relative group">
+                            <textarea
+                              rows={1}
+                              value={st.comment || ""}
+                              onChange={(e) => handleStudentCommentChange(st.studentId, e.target.value)}
+                              placeholder={`Ghi chú riêng cho ${st.studentName}...`}
+                              className="w-full p-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white font-medium text-[11px] text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-100 transition-all shadow-inner"
+                            />
+                            {st.comment && (
+                              <button
+                                type="button"
+                                onClick={() => handleStudentCommentChange(st.studentId, "")}
+                                className="absolute right-2 top-1.5 text-slate-400 hover:text-rose-500"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -3312,18 +3482,20 @@ export const CreateReportView: React.FC<CreateReportViewProps> = ({
           <button
             type="button"
             onClick={() => handleSaveReport("draft")}
-            className="btn-3d-secondary text-xs"
+            disabled={isSaving}
+            className="btn-3d-secondary text-xs flex items-center gap-2 disabled:opacity-50"
           >
-            <Save className="w-4 h-4" />
+            <Save className={`w-4 h-4 ${isSaving ? "animate-pulse" : ""}`} />
             <span>Lưu bản nháp</span>
           </button>
 
           <button
             type="button"
             onClick={() => handleSaveReport("submitted")}
-            className="btn-3d-primary text-xs"
+            disabled={isSaving}
+            className="btn-3d-primary text-xs flex items-center gap-2 shadow-lg disabled:opacity-50"
           >
-            <Send className="w-4 h-4 text-amber-400" />
+            <Send className={`w-4 h-4 text-amber-400 ${isSaving ? "animate-pulse" : ""}`} />
             <span>Gửi báo cáo cho GV</span>
           </button>
 
@@ -3331,10 +3503,11 @@ export const CreateReportView: React.FC<CreateReportViewProps> = ({
             <button
               type="button"
               onClick={() => handleSaveReport("approved")}
-              className="btn-3d-amber text-xs"
+              disabled={isSaving}
+              className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white py-2 px-4 rounded-xl font-black text-xs shadow-md flex items-center gap-2 border-b-2 border-emerald-800 disabled:opacity-50"
             >
-              <CheckCircle2 className="w-4 h-4 text-slate-950" />
-              <span>Duyệt báo cáo ngay</span>
+              <CheckCircle className={`w-4 h-4 ${isSaving ? "animate-pulse" : ""}`} />
+              <span>Duyệt & Đồng Bộ</span>
             </button>
           )}
         </div>

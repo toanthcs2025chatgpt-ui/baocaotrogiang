@@ -14,6 +14,7 @@ import {
   KeyRound,
   LogOut,
   X,
+  HardDrive,
 } from "lucide-react";
 import { User, TabType } from "../types";
 
@@ -60,6 +61,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: "classes", label: "Lớp học", icon: School, adminOnly: true },
     { id: "assistants", label: "Trợ giảng", icon: GraduationCap, adminOnly: true },
     { id: "statistics", label: "Thống kê", icon: BarChart3, adminOnly: true },
+    { id: "local_repo", label: "Lưu trữ máy tính", icon: HardDrive, adminOnly: true },
     { id: "settings", label: "Cài đặt", icon: Settings, adminOnly: true },
   ];
 

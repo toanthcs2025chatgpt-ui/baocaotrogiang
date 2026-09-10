@@ -36,12 +36,22 @@ import {
   ArrowRight,
   Server,
   Cpu,
+  Folder,
+  FolderOpen,
+  FileText,
+  ChevronRight,
+  ChevronDown,
+  Search,
+  Unlink,
+  Link,
 } from "lucide-react";
 import { ClubSettings, User } from "../types";
 import { storageService } from "../services/storage";
 import { firebaseService } from "../services/firebase";
 import { aiService, ApiKeyTestResult } from "../services/ai";
 import { AvatarUpload } from "./AvatarUpload";
+
+// Types and interfaces
 
 interface SettingsViewProps {
   currentUser: User;
@@ -116,66 +126,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [firebaseSyncing, setFirebaseSyncing] = useState(false);
   const [firebaseMessage, setFirebaseMessage] = useState<string | null>(null);
   const [savedSuccess, setSavedSuccess] = useState(false);
-
-  const [backupStatus, setBackupStatus] = useState<{ status: "idle" | "success" | "error"; message?: string }>({
-    status: "idle",
-  });
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleDownloadBackup = () => {
-    try {
-      const filename = storageService.downloadBackupJSON();
-      setBackupStatus({
-        status: "success",
-        message: `Đã tải thành công file sao lưu: ${filename}`,
-      });
-      setTimeout(() => setBackupStatus({ status: "idle" }), 5000);
-    } catch (e: any) {
-      setBackupStatus({
-        status: "error",
-        message: `Lỗi tải file sao lưu: ${e.message || "Không xác định"}`,
-      });
-    }
-  };
-
-  const handleRestoreFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const text = event.target?.result as string;
-        const parsed = JSON.parse(text);
-        const res = storageService.restoreBackupData(parsed);
-        if (res.success) {
-          setBackupStatus({
-            status: "success",
-            message: res.message,
-          });
-          // Refresh settings and admin info in state
-          setSettings(storageService.getSettings());
-          setAdminUser(storageService.getAdminUser());
-          setTimeout(() => {
-            window.location.reload();
-          }, 1500);
-        } else {
-          setBackupStatus({
-            status: "error",
-            message: res.message,
-          });
-        }
-      } catch (err: any) {
-        setBackupStatus({
-          status: "error",
-          message: "File không hợp lệ hoặc bị lỗi định dạng JSON.",
-        });
-      }
-    };
-    reader.readAsText(file);
-    // reset input
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
 
   // Google Drive state
   const [isDriveConnected, setIsDriveConnected] = useState(
@@ -1999,111 +1949,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       </form>
 
-      {/* SECTION 4: JSON BACKUP & RESTORE */}
-      <div className="bg-white rounded-3xl p-6 border-2 border-blue-200 shadow-sm space-y-4">
-        <div className="border-b border-slate-100 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <h3 className="font-black text-sm text-slate-900 flex items-center gap-2">
-              <Database className="w-4 h-4 text-blue-700" />
-              Sao Lưu & Phục Hồi Toàn Bộ Dữ Liệu (File JSON)
-            </h3>
-            <p className="text-xs text-slate-500 font-medium mt-0.5">
-              Xuất hoặc nhập toàn bộ dữ liệu gồm: cấu hình hệ thống, danh sách học sinh, trợ giảng, lớp học, toàn bộ báo cáo ca dạy, thời khóa biểu và tiến độ bài học.
-            </p>
-          </div>
-          <span className="text-[11px] font-mono font-bold px-2.5 py-1 rounded-lg bg-blue-50 text-blue-900 border border-blue-200 shrink-0 self-start sm:self-auto">
-            Định dạng: baocaotrogiang.YYYY-MM-DD.json
-          </span>
-        </div>
-
-        {/* Current Database Summary Badges */}
-        <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
-          <div className="text-[11px] font-black text-slate-500 uppercase tracking-wider">
-            Thống kê dữ liệu hiện có trong ứng dụng:
-          </div>
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="px-2.5 py-1 rounded-xl bg-white border border-slate-300 font-bold text-slate-800 shadow-2xs">
-              📊 <strong>{storageService.getReports().length}</strong> Báo cáo
-            </span>
-            <span className="px-2.5 py-1 rounded-xl bg-white border border-slate-300 font-bold text-slate-800 shadow-2xs">
-              👨‍🎓 <strong>{storageService.getStudents().length}</strong> Học sinh
-            </span>
-            <span className="px-2.5 py-1 rounded-xl bg-white border border-slate-300 font-bold text-slate-800 shadow-2xs">
-              🏫 <strong>{storageService.getClasses().length}</strong> Lớp học
-            </span>
-            <span className="px-2.5 py-1 rounded-xl bg-white border border-slate-300 font-bold text-slate-800 shadow-2xs">
-              🧑‍🏫 <strong>{storageService.getAssistants().length}</strong> Trợ giảng
-            </span>
-            <span className="px-2.5 py-1 rounded-xl bg-white border border-slate-300 font-bold text-slate-800 shadow-2xs">
-              🗓️ <strong>{storageService.getMasterTimetableSlots().length}</strong> Ca mẫu TKB
-            </span>
-            <span className="px-2.5 py-1 rounded-xl bg-white border border-slate-300 font-bold text-slate-800 shadow-2xs">
-              📋 <strong>{storageService.getTimetableSlots().length}</strong> Ca lịch dạy
-            </span>
-            <span className="px-2.5 py-1 rounded-xl bg-emerald-50 border border-emerald-300 font-black text-emerald-900">
-              ✓ Toàn bộ cấu hình hệ thống & Tài khoản
-            </span>
-          </div>
-        </div>
-
-        {backupStatus.status !== "idle" && (
-          <div
-            className={`p-3.5 rounded-2xl text-xs font-bold flex items-center gap-2 ${
-              backupStatus.status === "success"
-                ? "bg-emerald-50 text-emerald-950 border border-emerald-300"
-                : "bg-rose-50 text-rose-950 border border-rose-300"
-            }`}
-          >
-            {backupStatus.status === "success" ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            ) : (
-              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-            )}
-            <span>{backupStatus.message}</span>
-          </div>
-        )}
-
-        {/* Hidden File Input for Restore */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".json,application/json"
-          onChange={handleRestoreFile}
-          className="hidden"
-        />
-
-        <div className="flex flex-wrap items-center gap-3 pt-1">
-          {/* Export JSON Button */}
-          <button
-            type="button"
-            onClick={handleDownloadBackup}
-            className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-900 to-indigo-950 hover:from-blue-800 hover:to-indigo-900 active:from-blue-950 active:to-indigo-950 text-white text-xs font-black flex items-center justify-center gap-2 shadow-[0_3px_0_0_#1e3a8a] active:shadow-none active:translate-y-0.5 border border-blue-600/80 transition-all cursor-pointer"
-          >
-            <FileDown className="w-4 h-4 text-amber-400" />
-            <span>Tải file sao lưu (.json)</span>
-          </button>
-
-          {/* Import JSON Button */}
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="px-5 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200 text-emerald-950 text-xs font-black flex items-center justify-center gap-2 transition-all border border-emerald-300 shadow-xs cursor-pointer"
-          >
-            <FileUp className="w-4 h-4 text-emerald-700" />
-            <span>Phục hồi dữ liệu từ file JSON...</span>
-          </button>
-
-          {/* Wipe Clean Button */}
-          <button
-            type="button"
-            onClick={onWipeData}
-            className="px-4 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 active:bg-rose-200 text-rose-800 text-xs font-bold flex items-center justify-center gap-2 transition-colors border border-rose-200 ml-auto cursor-pointer"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>Xóa sạch dữ liệu (Start Clean)</span>
-          </button>
-        </div>
-      </div>
     </div>
   );
 };
